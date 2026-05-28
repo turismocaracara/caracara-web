@@ -35,5 +35,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# screenshots
-*.png
+# screenshots temp
+ss_*.png
+v[0-9]_*.png
