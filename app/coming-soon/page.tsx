@@ -5,7 +5,7 @@ import { Playfair_Display } from 'next/font/google';
 const playfair = Playfair_Display({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Próximamente — Turismo CaraCara',
+  title: 'En creación — Turismo CaraCara',
   description: 'Tours privados en Chile. We make it happen.',
 };
 
@@ -38,14 +38,14 @@ export default function ComingSoonPage() {
         <div className="flex flex-col gap-3">
           <p className="text-orange/90 text-sm font-semibold tracking-widest uppercase">Tours privados · Santiago, Chile</p>
           <h1 className={`${playfair.className} text-5xl sm:text-6xl font-bold text-white leading-tight`}>
-            Próximamente
+            En creación
           </h1>
           <p className={`${playfair.className} text-orange text-2xl italic`}>We make it happen</p>
         </div>
 
         {/* Description */}
         <p className="text-white/65 text-lg leading-relaxed">
-          Estamos preparando algo increíble. Tours privados en la zona central de Chile —
+          Estamos construyendo algo increíble. Tours privados en la zona central de Chile —
           Cajón del Maipo, Valparaíso, viñedos y más — en español, inglés y portugués.
         </p>
 
