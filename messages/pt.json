@@ -6,7 +6,11 @@
       "contact": "Contato",
       "book": "Reservar"
     },
-    "lang": { "es": "ES", "en": "EN", "pt": "PT" },
+    "lang": {
+      "es": "ES",
+      "en": "EN",
+      "pt": "PT"
+    },
     "cta": {
       "seeTours": "Ver tours",
       "contact": "Fale conosco",
@@ -297,22 +301,8 @@
   },
   "booking": {
     "title": "Reservar: {tourName}",
-    "subtitle": "Preencha o formulário e confirmamos a disponibilidade em menos de 24 horas.",
-    "name": "Nome completo",
-    "namePlaceholder": "Seu nome",
-    "email": "Endereço de e-mail",
-    "emailPlaceholder": "seu@email.com",
-    "phone": "Telefone / WhatsApp",
-    "phonePlaceholder": "+56 9...",
-    "date": "Data do tour",
-    "passengers": "Número de passageiros",
-    "passengersPlaceholder": "Ex: 4",
-    "notes": "Observações ou requisitos especiais",
-    "notesPlaceholder": "Alergias, crianças, mobilidade reduzida, etc.",
-    "submit": "Enviar solicitação",
-    "submitting": "Enviando...",
-    "success": "Solicitação enviada! Confirmamos disponibilidade e preço em menos de 24 horas.",
-    "error": "Houve um erro. Por favor, escreva-nos diretamente no WhatsApp.",
-    "priceNote": "O preço final é confirmado com a solicitação de reserva conforme data, tamanho do grupo e disponibilidade."
+    "subtitle": "",
+    "success": "Reserva registrada! Verifique seu email — enviamos o código e os próximos passos.",
+    "error": "Ocorreu um erro ao processar sua reserva. Nos escreva pelo WhatsApp."
   }
 }

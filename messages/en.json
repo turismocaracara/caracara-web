@@ -6,7 +6,11 @@
       "contact": "Contact",
       "book": "Book"
     },
-    "lang": { "es": "ES", "en": "EN", "pt": "PT" },
+    "lang": {
+      "es": "ES",
+      "en": "EN",
+      "pt": "PT"
+    },
     "cta": {
       "seeTours": "See tours",
       "contact": "Contact us",
@@ -297,22 +301,8 @@
   },
   "booking": {
     "title": "Book: {tourName}",
-    "subtitle": "Fill out the form and we'll confirm availability within 24 hours.",
-    "name": "Full name",
-    "namePlaceholder": "Your name",
-    "email": "Email address",
-    "emailPlaceholder": "your@email.com",
-    "phone": "Phone / WhatsApp",
-    "phonePlaceholder": "+56 9...",
-    "date": "Tour date",
-    "passengers": "Number of passengers",
-    "passengersPlaceholder": "e.g. 4",
-    "notes": "Notes or special requirements",
-    "notesPlaceholder": "Allergies, children, reduced mobility, etc.",
-    "submit": "Submit request",
-    "submitting": "Sending...",
-    "success": "Request submitted! We'll confirm availability and price within 24 hours.",
-    "error": "There was an error. Please write to us directly on WhatsApp.",
-    "priceNote": "The final price is confirmed with the booking request based on date, group size and availability."
+    "subtitle": "",
+    "success": "!Booking registered! Check your email — we sent you the code and next steps.",
+    "error": "An error occurred while processing your booking. Message us on WhatsApp."
   }
 }

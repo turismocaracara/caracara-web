@@ -297,22 +297,8 @@
   },
   "booking": {
     "title": "Reservar: {tourName}",
-    "subtitle": "Completa el formulario y te confirmamos disponibilidad en menos de 24 horas.",
-    "name": "Nombre completo",
-    "namePlaceholder": "Tu nombre",
-    "email": "Correo electrónico",
-    "emailPlaceholder": "tu@email.com",
-    "phone": "Teléfono / WhatsApp",
-    "phonePlaceholder": "+56 9...",
-    "date": "Fecha del tour",
-    "passengers": "Número de pasajeros",
-    "passengersPlaceholder": "Ej: 4",
-    "notes": "Notas o requisitos especiales",
-    "notesPlaceholder": "Alergias, niños, movilidad reducida, etc.",
-    "submit": "Enviar solicitud",
-    "submitting": "Enviando...",
-    "success": "¡Solicitud enviada! Te confirmamos disponibilidad y precio en menos de 24 horas.",
-    "error": "Hubo un error. Escríbenos directamente al WhatsApp.",
-    "priceNote": "El precio final se confirma con la solicitud según fecha, grupo y disponibilidad."
+    "subtitle": "Completa el formulario. Tu reserva queda registrada al instante.",
+    "success": "¡Reserva registrada! Revisa tu email — te enviamos el código y los próximos pasos.",
+    "error": "Hubo un error al procesar la reserva. Escríbenos al WhatsApp."
   }
 }
