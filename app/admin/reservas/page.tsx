@@ -42,21 +42,26 @@ export default async function ReservasPage({
 
   const { data, error } = await query;
 
-  const rows: BookingRow[] = (data ?? []).map((b: any) => ({
-    id:           b.id,
-    booking_code: b.booking_code,
-    tour_slug:    b.tour_instances?.tour_slug ?? '—',
-    tour_date:    b.tour_instances?.date ?? '',
-    booking_type: b.booking_type,
-    pax:          b.pax,
-    status:       b.status,
-    total_amount: b.total_amount,
-    locale:       b.locale,
-    created_at:   b.created_at,
-    client_name:  b.clients?.name  ?? null,
-    client_email: b.clients?.email ?? null,
-    client_phone: b.clients?.phone ?? null,
-  }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows: BookingRow[] = ((data ?? []) as unknown as Record<string, any>[]).map((b) => {
+    const inst   = Array.isArray(b.tour_instances) ? b.tour_instances[0] : b.tour_instances;
+    const client = Array.isArray(b.clients)        ? b.clients[0]        : b.clients;
+    return {
+      id:           b.id            as string,
+      booking_code: b.booking_code  as string,
+      tour_slug:    (inst?.tour_slug ?? '—')  as string,
+      tour_date:    (inst?.date      ?? '')   as string,
+      booking_type: b.booking_type  as string,
+      pax:          b.pax           as number,
+      status:       b.status        as string,
+      total_amount: b.total_amount  as number | null,
+      locale:       b.locale        as string,
+      created_at:   b.created_at    as string,
+      client_name:  (client?.name   ?? null) as string | null,
+      client_email: (client?.email  ?? null) as string | null,
+      client_phone: (client?.phone  ?? null) as string | null,
+    };
+  });
 
   // Filtro por texto — lado servidor
   const q = (searchParams.q ?? '').toLowerCase();

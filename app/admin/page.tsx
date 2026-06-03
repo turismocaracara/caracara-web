@@ -2,6 +2,28 @@ import { requireAdmin } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 
+interface TodayInstance {
+  id: string;
+  tour_slug: string;
+  date: string;
+  booking_type: string;
+  current_pax: number;
+  status: string;
+  bookings: { id: string; booking_code: string; pax: number; status: string }[] | null;
+}
+
+interface RecentBooking {
+  id: string;
+  booking_code: string;
+  booking_type: string;
+  pax: number;
+  status: string;
+  total_amount: number | null;
+  created_at: string;
+  tour_instances: { tour_slug: string; date: string } | null;
+  clients: { name: string } | null;
+}
+
 function fmtCLP(n: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n);
 }
@@ -111,7 +133,7 @@ export default async function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {todayInstances.map((inst: any, i: number) => (
+                  {(todayInstances as unknown as TodayInstance[]).map((inst, i) => (
                     <tr key={inst.id} className={i > 0 ? 'border-t border-gray-50' : ''}>
                       <td className="px-4 py-3 text-gray-800">{inst.tour_slug}</td>
                       <td className="px-4 py-3 text-gray-500 capitalize">{inst.booking_type}</td>
@@ -153,7 +175,7 @@ export default async function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recentBookings.map((b: any, i: number) => (
+                {(recentBookings as unknown as RecentBooking[]).map((b, i) => (
                   <tr key={b.id} className={i > 0 ? 'border-t border-gray-50' : ''}>
                     <td className="px-4 py-3 font-mono text-xs text-teal">{b.booking_code}</td>
                     <td className="px-4 py-3 text-gray-600">{b.clients?.name ?? '—'}</td>
