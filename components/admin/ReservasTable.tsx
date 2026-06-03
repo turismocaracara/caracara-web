@@ -4,11 +4,12 @@ import { useState, useMemo } from 'react';
 import type { BookingRow } from '@/app/admin/reservas/page';
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
-  pending:     { label: 'Pendiente',  cls: 'bg-orange-50 text-orange-700 border-orange-200' },
-  waiting_min: { label: 'En espera', cls: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
-  confirmed:   { label: 'Confirmada',cls: 'bg-green-50 text-green-700 border-green-200' },
-  cancelled:   { label: 'Cancelada', cls: 'bg-red-50 text-red-600 border-red-200' },
-  refunded:    { label: 'Devuelta',  cls: 'bg-gray-50 text-gray-500 border-gray-200' },
+  reserved:        { label: 'Reservado',  cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  pending_payment: { label: 'Pago pend.', cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  waiting_min:     { label: 'En espera',  cls: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
+  confirmed:       { label: 'Confirmada', cls: 'bg-green-50 text-green-700 border-green-200' },
+  cancelled:       { label: 'Cancelada',  cls: 'bg-red-50 text-red-600 border-red-200' },
+  refunded:        { label: 'Devuelta',   cls: 'bg-gray-50 text-gray-500 border-gray-200' },
 };
 
 function fmtDate(iso: string) {
@@ -58,8 +59,9 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal"
         >
           <option value="all">Todos los estados</option>
-          <option value="pending">Pendiente</option>
-          <option value="waiting_min">En espera</option>
+          <option value="reserved">Reservado</option>
+          <option value="pending_payment">Pago pendiente</option>
+          <option value="waiting_min">En espera mínimo</option>
           <option value="confirmed">Confirmada</option>
           <option value="cancelled">Cancelada</option>
           <option value="refunded">Devuelta</option>

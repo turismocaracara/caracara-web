@@ -7,8 +7,8 @@ export interface BookingRow {
   id: string;
   booking_code: string;
   tour_slug: string;
-  booking_type: string;
   tour_date: string;
+  booking_type: string;
   pax: number;
   status: string;
   total_amount: number | null;
@@ -22,15 +22,15 @@ export interface BookingRow {
 export default async function ReservasPage({
   searchParams,
 }: {
-  searchParams: { status?: string; from?: string; to?: string; q?: string };
+  searchParams: { status?: string; q?: string };
 }) {
   const user = await requireAdmin();
 
   let query = supabase
     .from('bookings')
     .select(`
-      id, booking_code, tour_slug, booking_type,
-      tour_date, pax, status, total_amount, locale, created_at,
+      id, booking_code, booking_type, pax, status, total_amount, locale, created_at,
+      tour_instances ( tour_slug, date ),
       clients ( name, email, phone )
     `)
     .order('created_at', { ascending: false })
@@ -39,21 +39,15 @@ export default async function ReservasPage({
   if (searchParams.status && searchParams.status !== 'all') {
     query = query.eq('status', searchParams.status);
   }
-  if (searchParams.from) {
-    query = query.gte('tour_date', searchParams.from);
-  }
-  if (searchParams.to) {
-    query = query.lte('tour_date', searchParams.to);
-  }
 
   const { data, error } = await query;
 
   const rows: BookingRow[] = (data ?? []).map((b: any) => ({
     id:           b.id,
     booking_code: b.booking_code,
-    tour_slug:    b.tour_slug,
+    tour_slug:    b.tour_instances?.tour_slug ?? '—',
+    tour_date:    b.tour_instances?.date ?? '',
     booking_type: b.booking_type,
-    tour_date:    b.tour_date,
     pax:          b.pax,
     status:       b.status,
     total_amount: b.total_amount,
@@ -64,7 +58,7 @@ export default async function ReservasPage({
     client_phone: b.clients?.phone ?? null,
   }));
 
-  // Filtro por texto (nombre / email / código) — lado servidor
+  // Filtro por texto — lado servidor
   const q = (searchParams.q ?? '').toLowerCase();
   const filtered = q
     ? rows.filter(r =>
@@ -83,7 +77,7 @@ export default async function ReservasPage({
           <h1 className="text-xl font-semibold text-gray-900">Reservas</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
-            {error && <span className="ml-2 text-red-500">· Error al cargar</span>}
+            {error && <span className="ml-2 text-red-500">· Error: {error.message}</span>}
           </p>
         </div>
 
