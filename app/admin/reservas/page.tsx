@@ -30,7 +30,7 @@ export default async function ReservasPage({
     .from('bookings')
     .select(`
       id, booking_code, booking_type, pax, status, total_amount, locale, created_at,
-      tour_instances ( tour_slug, date ),
+      tour_instances ( tour_slug, date, tours ( name_es ) ),
       clients ( name, email, phone )
     `)
     .order('created_at', { ascending: false })
@@ -49,7 +49,7 @@ export default async function ReservasPage({
     return {
       id:           b.id            as string,
       booking_code: b.booking_code  as string,
-      tour_slug:    (inst?.tour_slug ?? '—')  as string,
+      tour_slug:    (inst?.tours?.name_es ?? inst?.tour_slug ?? '—') as string,
       tour_date:    (inst?.date      ?? '')   as string,
       booking_type: b.booking_type  as string,
       pax:          b.pax           as number,

@@ -9,6 +9,7 @@ interface TodayInstance {
   booking_type: string;
   current_pax: number;
   status: string;
+  tours: { name_es: string } | null;
   bookings: { id: string; booking_code: string; pax: number; status: string }[] | null;
 }
 
@@ -20,7 +21,7 @@ interface RecentBooking {
   status: string;
   total_amount: number | null;
   created_at: string;
-  tour_instances: { tour_slug: string; date: string } | null;
+  tour_instances: { tour_slug: string; date: string; tours: { name_es: string } | null } | null;
   clients: { name: string } | null;
 }
 
@@ -55,6 +56,7 @@ export default async function AdminDashboard() {
       .from('tour_instances')
       .select(`
         id, tour_slug, date, booking_type, current_pax, status,
+        tours ( name_es ),
         bookings ( id, booking_code, pax, status )
       `)
       .eq('date', today)
@@ -65,7 +67,7 @@ export default async function AdminDashboard() {
       .from('bookings')
       .select(`
         id, booking_code, booking_type, pax, status, total_amount, created_at,
-        tour_instances ( tour_slug, date ),
+        tour_instances ( tour_slug, date, tours ( name_es ) ),
         clients ( name )
       `)
       .order('created_at', { ascending: false })
@@ -135,7 +137,7 @@ export default async function AdminDashboard() {
                 <tbody>
                   {(todayInstances as unknown as TodayInstance[]).map((inst, i) => (
                     <tr key={inst.id} className={i > 0 ? 'border-t border-gray-50' : ''}>
-                      <td className="px-4 py-3 text-gray-800">{inst.tour_slug}</td>
+                      <td className="px-4 py-3 text-gray-800">{inst.tours?.name_es ?? inst.tour_slug}</td>
                       <td className="px-4 py-3 text-gray-500 capitalize">{inst.booking_type}</td>
                       <td className="px-4 py-3 text-center text-gray-800 font-semibold">{inst.current_pax}</td>
                       <td className="px-4 py-3 text-center text-gray-500">
@@ -180,7 +182,7 @@ export default async function AdminDashboard() {
                     <td className="px-4 py-3 font-mono text-xs text-teal">{b.booking_code}</td>
                     <td className="px-4 py-3 text-gray-600">{b.clients?.name ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-800 max-w-[140px] truncate">
-                      {b.tour_instances?.tour_slug ?? '—'}
+                      {b.tour_instances?.tours?.name_es ?? b.tour_instances?.tour_slug ?? '—'}
                     </td>
                     <td className="px-4 py-3 text-gray-600">
                       {b.tour_instances?.date ? fmtDate(b.tour_instances.date) : '—'}
