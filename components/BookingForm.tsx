@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
+import BookingCalendar from './BookingCalendar';
 
 interface BookingFormProps {
   tourName: string;
@@ -69,8 +70,6 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
 
   // Paso 3
   const [notes, setNotes] = useState('');
-
-  const today = new Date().toISOString().split('T')[0];
 
   // ─── Sincronizar array de pasajeros con pax ──────────────
   function handlePaxChange(n: number) {
@@ -299,16 +298,21 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
             </div>
           </div>
 
-          {/* Fecha */}
-          <Input label={labels.date} required>
-            <input
-              type="date"
-              min={today}
-              value={tourDate}
-              onChange={e => setTourDate(e.target.value)}
-              className={inputClass}
-            />
-          </Input>
+          {/* Fecha — calendario con disponibilidad real */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink">
+              {labels.date}<span className="text-orange ml-0.5">*</span>
+            </label>
+            <div className="border border-gray-200 rounded-xl p-3">
+              <BookingCalendar
+                tourSlug={tourSlug}
+                bookingType={bookingType}
+                selected={tourDate}
+                onSelect={setTourDate}
+                locale={locale}
+              />
+            </div>
+          </div>
 
           {/* Pax */}
           <Input label={labels.paxCount} required>
