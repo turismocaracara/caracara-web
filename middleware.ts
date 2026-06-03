@@ -19,35 +19,42 @@ export function middleware(request: NextRequest) {
     !host.includes('.vercel.dev');
 
   if (isProductionDomain) {
-    // /preview → activa acceso completo (cookie 30 días) y redirige al sitio
+    // /preview → activa cookie 30 días y redirige al sitio completo
     if (pathname === '/preview') {
-      const url = request.nextUrl.clone();
-      url.pathname = '/es';
-      const res = NextResponse.redirect(url, 302);
+      const res = NextResponse.redirect(new URL('/es', request.url));
       res.cookies.set(PREVIEW_COOKIE, '1', {
         httpOnly: false,
-        maxAge: 60 * 60 * 24 * 30, // 30 días
+        maxAge: 60 * 60 * 24 * 30,
         path: '/',
         sameSite: 'lax',
       });
       return res;
     }
 
-    // Si tiene la cookie → acceso completo al sitio
+    // /salir-preview → limpia la cookie y vuelve a "en creación"
+    if (pathname === '/salir-preview') {
+      const res = NextResponse.redirect(new URL('/coming-soon', request.url));
+      res.cookies.delete(PREVIEW_COOKIE);
+      return res;
+    }
+
+    // Si tiene cookie de preview → acceso completo (pasa a i18n normal)
     if (request.cookies.get(PREVIEW_COOKIE)?.value === '1') {
       return handleI18n(request);
     }
 
-    // Sin cookie → página "en creación"
-    // ─── LANZAMIENTO: eliminar las 3 líneas de abajo ───
-    if (pathname !== '/coming-soon') {
-      const url = request.nextUrl.clone();
-      url.pathname = '/coming-soon';
-      return NextResponse.redirect(url, 302);
+    // Sin cookie en /coming-soon → servir la página directamente, sin pasar por i18n
+    if (pathname === '/coming-soon') {
+      return NextResponse.next();
     }
-    // ───────────────────────────────────────────────────
+
+    // Todo lo demás → redirigir a "en creación"
+    // ─── LANZAMIENTO: eliminar estas 3 líneas ───
+    return NextResponse.redirect(new URL('/coming-soon', request.url));
+    // ────────────────────────────────────────────
   }
 
+  // Localhost / vercel.app → routing i18n normal
   return handleI18n(request);
 }
 
