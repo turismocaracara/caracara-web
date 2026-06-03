@@ -13,6 +13,11 @@ export function middleware(request: NextRequest) {
   const host = request.headers.get('host') ?? '';
   const { pathname } = request.nextUrl;
 
+  // Panel admin → siempre pasa directo, sin i18n ni coming-soon, en cualquier entorno
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    return NextResponse.next();
+  }
+
   const isProductionDomain =
     !host.includes('localhost') &&
     !host.includes('.vercel.app') &&
@@ -48,20 +53,10 @@ export function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    // Panel admin → siempre accesible (la propia ruta maneja la autenticación)
-    if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-      return NextResponse.next();
-    }
-
     // Todo lo demás → redirigir a "en creación"
     // ─── LANZAMIENTO: eliminar estas 3 líneas ───
     return NextResponse.redirect(new URL('/coming-soon', request.url));
     // ────────────────────────────────────────────
-  }
-
-  // Panel admin → excluir del i18n en todos los entornos
-  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-    return NextResponse.next();
   }
 
   // Localhost / vercel.app → routing i18n normal
