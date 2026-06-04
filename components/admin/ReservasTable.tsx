@@ -13,6 +13,7 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 };
 
 function fmtDate(iso: string) {
+  if (!iso) return '—';
   return new Date(iso + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
@@ -21,10 +22,18 @@ function fmtCLP(n: number | null) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n);
 }
 
+function whatsappUrl(phone: string, name: string, code: string, tour: string, date: string): string {
+  // Dejar solo dígitos (wa.me no acepta el +)
+  const digits = phone.replace(/\D/g, '');
+  const dateStr = fmtDate(date);
+  const msg = `Hola ${name} 👋, te escribimos de Turismo CaraCara sobre tu reserva *${code}* — *${tour}* el ${dateStr}. ¿Cómo podemos ayudarte?`;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
+}
+
 export default function ReservasTable({ initialBookings }: { initialBookings: BookingRow[] }) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch]           = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
+  const [typeFilter, setTypeFilter]   = useState('all');
 
   const bookings = useMemo(() => {
     let list = initialBookings;
@@ -34,6 +43,7 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
         b.booking_code.toLowerCase().includes(q) ||
         (b.client_name  ?? '').toLowerCase().includes(q) ||
         (b.client_email ?? '').toLowerCase().includes(q) ||
+        (b.client_phone ?? '').toLowerCase().includes(q) ||
         b.tour_slug.toLowerCase().includes(q)
       );
     }
@@ -48,7 +58,7 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
       <div className="flex flex-wrap gap-3">
         <input
           type="search"
-          placeholder="Buscar por código, nombre, email, tour..."
+          placeholder="Buscar por código, nombre, email, teléfono, tour..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal flex-1 min-w-52 bg-white"
@@ -85,7 +95,7 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
         {bookings.length === 0 ? (
           <p className="text-sm text-gray-400 py-12 text-center">Sin resultados</p>
         ) : (
-          <table className="w-full text-sm min-w-[800px]">
+          <table className="w-full text-sm min-w-[900px]">
             <thead>
               <tr className="border-b border-gray-50">
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Código</th>
@@ -96,7 +106,8 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
                 <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 w-12">Pax</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 w-28">Monto</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Estado</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Creada</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-24">Creada</th>
+                <th className="w-10" />
               </tr>
             </thead>
             <tbody>
@@ -108,6 +119,9 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
                       <div>
                         <p className="text-gray-800 font-medium">{b.client_name}</p>
                         <p className="text-gray-400 text-xs">{b.client_email}</p>
+                        {b.client_phone && (
+                          <p className="text-gray-400 text-xs">{b.client_phone}</p>
+                        )}
                       </div>
                     ) : (
                       <span className="text-gray-400">—</span>
@@ -139,6 +153,25 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
                       hour: '2-digit', minute: '2-digit',
                     })}
                   </td>
+                  <td className="px-3 py-3">
+                    {b.client_phone && (
+                      <a
+                        href={whatsappUrl(
+                          b.client_phone,
+                          b.client_name ?? 'cliente',
+                          b.booking_code,
+                          b.tour_slug,
+                          b.tour_date,
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`WhatsApp a ${b.client_name} (${b.client_phone})`}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 transition-colors"
+                      >
+                        <WhatsAppIcon />
+                      </a>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -155,5 +188,14 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${s.cls}`}>
       {s.label}
     </span>
+  );
+}
+
+function WhatsAppIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+      <path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.529 5.855L.057 23.882a.5.5 0 0 0 .61.61l6.101-1.485A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22a9.944 9.944 0 0 1-5.193-1.452l-.372-.22-3.862.94.972-3.768-.242-.387A9.944 9.944 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+    </svg>
   );
 }
