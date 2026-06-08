@@ -27,9 +27,17 @@
     "duration": "Duração",
     "hours": "horas",
     "maxPax": "Máx. {n} pessoas",
+    "people": "pessoas",
     "includes": "Inclui",
+    "tourExcludes": "Não inclui",
     "highlights": "Destaques",
     "wineries": "Vinícolas parceiras",
+    "itinerary": "Itinerário",
+    "prices": "Preços",
+    "group": "Tour Grupal",
+    "private": "Tour Privado",
+    "from": "A partir de",
+    "lunch": "Almoço",
     "difficulty": {
       "low": "Fácil",
       "medium": "Moderado",
@@ -146,7 +154,7 @@
     "valparaiso-casas-del-bosque": "Valparaíso + Casas del Bosque",
     "andes-panoramico": "Andes Panorâmico",
     "city-tour-santiago": "City Tour Santiago",
-    "tour-casablanca": "Vale de Casablanca",
+    "tour-casablanca": "Vinhedos de Casablanca",
     "tour-premium": "Tour Vinícolas Premium",
     "tour-colchagua": "Vale de Colchagua",
     "tour-santa-rita": "Viña Santa Rita",
@@ -304,5 +312,13 @@
     "subtitle": "",
     "success": "Reserva registrada! Verifique seu email — enviamos o código e os próximos passos.",
     "error": "Ocorreu um erro ao processar sua reserva. Nos escreva pelo WhatsApp."
+  },
+  "tourIncludeItems": {
+    "pickup_dropoff": "Pick-up e drop-off no hotel",
+    "bilingual_guide": "Guia bilíngue certificado",
+    "wine_tasting_vineyard": "Degustação e tour nos vinhedos"
+  },
+  "tourExcludeItems": {
+    "lunch": "Almoço"
   }
 }

@@ -23,9 +23,17 @@
     "duration": "Duración",
     "hours": "horas",
     "maxPax": "Máx. {n} personas",
+    "people": "personas",
     "includes": "Incluye",
+    "tourExcludes": "No incluye",
     "highlights": "Puntos destacados",
     "wineries": "Viñas con convenio",
+    "itinerary": "Itinerario",
+    "prices": "Precios",
+    "group": "Tour Grupal",
+    "private": "Tour Privado",
+    "from": "Desde",
+    "lunch": "Almuerzo",
     "difficulty": {
       "low": "Fácil",
       "medium": "Moderado",
@@ -300,5 +308,13 @@
     "subtitle": "Completa el formulario. Tu reserva queda registrada al instante.",
     "success": "¡Reserva registrada! Revisa tu email — te enviamos el código y los próximos pasos.",
     "error": "Hubo un error al procesar la reserva. Escríbenos al WhatsApp."
+  },
+  "tourIncludeItems": {
+    "pickup_dropoff": "Pick-up y drop-off en tu hotel",
+    "bilingual_guide": "Guía bilingüe certificado",
+    "wine_tasting_vineyard": "Degustación y tour en las viñas"
+  },
+  "tourExcludeItems": {
+    "lunch": "Almuerzo"
   }
 }

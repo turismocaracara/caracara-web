@@ -27,9 +27,17 @@
     "duration": "Duration",
     "hours": "hours",
     "maxPax": "Max. {n} people",
+    "people": "people",
     "includes": "Includes",
+    "tourExcludes": "Not included",
     "highlights": "Highlights",
     "wineries": "Partner wineries",
+    "itinerary": "Itinerary",
+    "prices": "Prices",
+    "group": "Group Tour",
+    "private": "Private Tour",
+    "from": "From",
+    "lunch": "Lunch",
     "difficulty": {
       "low": "Easy",
       "medium": "Moderate",
@@ -302,7 +310,15 @@
   "booking": {
     "title": "Book: {tourName}",
     "subtitle": "",
-    "success": "!Booking registered! Check your email — we sent you the code and next steps.",
+    "success": "Booking registered! Check your email — we sent you the code and next steps.",
     "error": "An error occurred while processing your booking. Message us on WhatsApp."
+  },
+  "tourIncludeItems": {
+    "pickup_dropoff": "Hotel pick-up & drop-off",
+    "bilingual_guide": "Certified bilingual guide",
+    "wine_tasting_vineyard": "Wine tasting & vineyard tour"
+  },
+  "tourExcludeItems": {
+    "lunch": "Lunch"
   }
 }

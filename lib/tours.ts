@@ -1,6 +1,18 @@
 export type TourCategory = 'cajon' | 'valparaiso' | 'santiago' | 'vinedos' | 'trekking' | 'aventura';
 export type TourDifficulty = 'low' | 'medium' | 'high';
 
+export interface ItineraryStop {
+  time: string;
+  place: string;
+  isLunch?: boolean;
+}
+
+export interface PrivatePriceTier {
+  paxMin: number;
+  paxMax: number;
+  price: number;
+}
+
 export interface Tour {
   slug: string;
   category: TourCategory;
@@ -8,6 +20,13 @@ export interface Tour {
   maxPax: number;
   price: number | null; // null = consultar
   difficulty: TourDifficulty;
+  hideDifficulty?: boolean;
+  hidePax?: boolean;
+  groupPrice?: number;
+  privatePricing?: PrivatePriceTier[];
+  itinerary?: ItineraryStop[];
+  includesKeys?: string[];
+  excludesKeys?: string[];
   highlights: string[];
   wineConvenios?: string[];
 }
@@ -28,7 +47,33 @@ export const TOURS: Tour[] = [
   { slug: 'andes-panoramico', category: 'santiago', durationHours: 7, maxPax: 9, price: null, difficulty: 'medium', highlights: ['farellones_village', 'andes_views', 'snow_optional', 'snack_included'] },
   { slug: 'city-tour-santiago', category: 'santiago', durationHours: 6, maxPax: 9, price: null, difficulty: 'low', highlights: ['plaza_de_armas', 'santa_lucia', 'barrio_italia', 'snack_included'] },
   // --- VIÑEDOS ---
-  { slug: 'tour-casablanca', category: 'vinedos', durationHours: 9, maxPax: 9, price: null, difficulty: 'low', highlights: ['casablanca_valley', 'sauvignon_blanc', 'pinot_noir', 'lunch_included'], wineConvenios: ['Casas del Bosque', 'Emiliana', 'Viñamar', 'Kingston Family', 'Odfjell', 'Villard'] },
+  {
+    slug: 'tour-casablanca',
+    category: 'vinedos',
+    durationHours: 9,
+    maxPax: 9,
+    price: null,
+    difficulty: 'low',
+    hideDifficulty: true,
+    hidePax: true,
+    groupPrice: 130000,
+    privatePricing: [
+      { paxMin: 1, paxMax: 3, price: 240000 },
+      { paxMin: 4, paxMax: 6, price: 200000 },
+      { paxMin: 7, paxMax: 9, price: 180000 },
+    ],
+    itinerary: [
+      { time: '09:00', place: 'Salida desde Santiago' },
+      { time: '10:00', place: 'Viña Emiliana' },
+      { time: '11:20', place: 'Viñamar' },
+      { time: '13:00', place: 'Viña Bodegas Re' },
+      { time: '14:30', place: 'Casas del Bosque · Restaurante Taninos', isLunch: true },
+    ],
+    includesKeys: ['pickup_dropoff', 'bilingual_guide', 'wine_tasting_vineyard'],
+    excludesKeys: ['lunch'],
+    highlights: ['casablanca_valley', 'sauvignon_blanc', 'pinot_noir', 'lunch_included'],
+    wineConvenios: ['Casas del Bosque', 'Emiliana', 'Viñamar', 'Kingston Family', 'Odfjell', 'Villard'],
+  },
   { slug: 'tour-premium', category: 'vinedos', durationHours: 10, maxPax: 9, price: null, difficulty: 'low', highlights: ['top_wineries', 'premium_tasting', 'gourmet_lunch', 'cellar_tour'], wineConvenios: ['Cousiño Macul', 'Clos Apalta', 'Matetic', 'Aquitania'] },
   { slug: 'tour-colchagua', category: 'vinedos', durationHours: 12, maxPax: 9, price: null, difficulty: 'low', highlights: ['colchagua_valley', 'carmenere', 'santa_cruz_town', 'lunch_included'], wineConvenios: ['Clos Apalta', 'Casa Silva'] },
   { slug: 'tour-santa-rita', category: 'vinedos', durationHours: 8, maxPax: 9, price: null, difficulty: 'low', highlights: ['santa_rita_estate', 'museum_tour', 'premium_tasting', 'lunch_included'], wineConvenios: ['Santa Rita'] },
