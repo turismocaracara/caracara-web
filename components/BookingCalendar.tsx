@@ -154,12 +154,20 @@ export default function BookingCalendar({ tourSlug, selected, onSelect, locale }
       {selected && availability[selected] && (
         <div className={`text-xs px-3 py-2 rounded-lg border ${
           availability[selected].status === 'forming'
-            ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
+            ? availability[selected].group_confirmed
+              ? 'bg-green-50 border-green-200 text-green-700'
+              : 'bg-yellow-50 border-yellow-200 text-yellow-700'
             : 'bg-green-50 border-green-200 text-green-700'
         }`}>
           {availability[selected].status === 'forming'
-            ? locale === 'es'
-              ? `Tour en formación — ${availability[selected].spots} cupo(s) disponible(s). Se confirma si se alcanza el mínimo de pasajeros.`
+            ? availability[selected].group_confirmed
+              ? locale === 'es'
+                ? `Tour garantizado — ${availability[selected].spots} cupo(s) disponible(s). El tour ya tiene pasajeros suficientes para realizarse.`
+                : locale === 'en'
+                ? `Tour guaranteed — ${availability[selected].spots} spot(s) available. Enough passengers to run.`
+                : `Tour garantido — ${availability[selected].spots} vaga(s) disponível. O tour já tem passageiros suficientes para acontecer.`
+              : locale === 'es'
+              ? `Tour en formación — ${availability[selected].spots} cupo(s) disponible(s). Se confirma al alcanzar el mínimo de pasajeros.`
               : locale === 'en'
               ? `Tour forming — ${availability[selected].spots} spot(s) available. Confirmed once minimum passengers is reached.`
               : `Tour em formação — ${availability[selected].spots} vaga(s) disponível. Confirmado ao atingir o mínimo de passageiros.`

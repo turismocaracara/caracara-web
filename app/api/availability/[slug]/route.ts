@@ -5,8 +5,9 @@ export type AvailabilityStatus = 'available' | 'forming' | 'full' | 'blocked' | 
 
 export interface DayAvailability {
   status: AvailabilityStatus;
-  spots: number;      // cupos para un grupo nuevo
-  pax_booked: number; // pax ya reservados ese día
+  spots: number;           // cupos para un grupo nuevo
+  pax_booked: number;      // pax ya reservados ese día
+  group_confirmed?: boolean; // forming + grupo ya alcanzó el mínimo para realizarse
 }
 
 interface RouteParams {
@@ -249,7 +250,12 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const hasGroupRemaining = formingGroupRemaining > 0;
 
     if (freeVans === 0 && hasGroupRemaining) {
-      availability[ds] = { status: 'forming', spots, pax_booked: totalPaxBooked };
+      const groupMinPax: number = tour.group_min_pax ?? 4;
+      const groupPaxBooked = dayInstances
+        .filter(i => i.booking_type === 'group')
+        .reduce((sum, i) => sum + (i.current_pax ?? 0), 0);
+      const group_confirmed = groupPaxBooked >= groupMinPax;
+      availability[ds] = { status: 'forming', spots, pax_booked: totalPaxBooked, group_confirmed };
     } else {
       availability[ds] = { status: 'available', spots, pax_booked: totalPaxBooked };
     }
