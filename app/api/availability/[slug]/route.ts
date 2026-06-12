@@ -188,7 +188,13 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       continue;
     }
 
-    // 2. Cutoff: si es mañana y ya pasó la hora límite
+    // 2. Hoy: bloqueado por defecto (sin reservas el mismo día)
+    if (ds === todayStr) {
+      availability[ds] = { status: 'blocked', spots: 0, pax_booked: 0 };
+      continue;
+    }
+
+    // 3. Cutoff: si es mañana y ya pasó la hora límite
     if (ds === dateStr(now.getFullYear(), now.getMonth() + 1, now.getDate() + 1)) {
       const pastCutoff = now.getHours() > cutoffH ||
         (now.getHours() === cutoffH && now.getMinutes() >= cutoffM);
