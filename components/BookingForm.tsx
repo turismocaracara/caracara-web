@@ -61,9 +61,17 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
   const [bookingCode, setBookingCode] = useState('');
 
   // Paso 1
-  const [bookingType, setBookingType] = useState<'private' | 'group'>('private');
-  const [tourDate, setTourDate]       = useState('');
-  const [pax, setPax]                 = useState(2);
+  const [bookingType, setBookingType]     = useState<'private' | 'group'>('private');
+  const [tourDate, setTourDate]           = useState('');
+  const [dateIsForming, setDateIsForming] = useState(false);
+  const [pax, setPax]                     = useState(2);
+
+  function handleDateSelect(date: string, status: 'available' | 'forming' | 'full' | 'blocked' | 'past') {
+    setTourDate(date);
+    const forming = status === 'forming';
+    setDateIsForming(forming);
+    if (forming) setBookingType('group');
+  }
 
   // Paso 2 — pasajeros
   const [passengers, setPassengers] = useState<PassengerData[]>([emptyPassenger()]);
@@ -281,21 +289,37 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-ink">{labels.tourType}<span className="text-orange ml-0.5">*</span></label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {(['private', 'group'] as const).map(type => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setBookingType(type)}
-                  className={`border-2 rounded-xl p-3 text-sm font-medium text-left transition-colors ${
-                    bookingType === type
-                      ? 'border-teal bg-teal/5 text-teal'
-                      : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                  }`}
-                >
-                  {type === 'private' ? labels.private : labels.group}
-                </button>
-              ))}
+              {(['private', 'group'] as const).map(type => {
+                const disabledPrivate = type === 'private' && dateIsForming;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    disabled={disabledPrivate}
+                    onClick={() => !disabledPrivate && setBookingType(type)}
+                    title={disabledPrivate ? (locale === 'en' ? 'No private vans available on this date' : locale === 'pt' ? 'Sem vans disponíveis nesta data' : 'No hay vans libres esta fecha') : undefined}
+                    className={`border-2 rounded-xl p-3 text-sm font-medium text-left transition-colors ${
+                      disabledPrivate
+                        ? 'border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed'
+                        : bookingType === type
+                        ? 'border-teal bg-teal/5 text-teal'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    }`}
+                  >
+                    {type === 'private' ? labels.private : labels.group}
+                  </button>
+                );
+              })}
             </div>
+            {dateIsForming && (
+              <p className="text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                {locale === 'en'
+                  ? 'This date only accepts group bookings — all private vans are taken.'
+                  : locale === 'pt'
+                  ? 'Esta data aceita apenas reservas em grupo — todas as vans privadas estão ocupadas.'
+                  : 'Esta fecha solo acepta tour grupal — las vans privadas están ocupadas.'}
+              </p>
+            )}
           </div>
 
           {/* Fecha — calendario con disponibilidad real */}
@@ -308,7 +332,7 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
                 tourSlug={tourSlug}
                 bookingType={bookingType}
                 selected={tourDate}
-                onSelect={setTourDate}
+                onSelect={handleDateSelect}
                 locale={locale}
               />
             </div>

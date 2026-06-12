@@ -7,7 +7,7 @@ interface Props {
   tourSlug:     string;
   bookingType:  'private' | 'group';
   selected:     string; // YYYY-MM-DD
-  onSelect:     (date: string) => void;
+  onSelect:     (date: string, status: AvailabilityStatus) => void;
   locale:       'es' | 'en' | 'pt';
 }
 
@@ -126,7 +126,7 @@ export default function BookingCalendar({ tourSlug, selected, onSelect, locale }
               key={ds}
               type="button"
               disabled={!isClickable}
-              onClick={() => isClickable && onSelect(ds)}
+              onClick={() => isClickable && onSelect(ds, status)}
               title={info ? `${LEGEND[locale][status as keyof typeof LEGEND.es] ?? ''} — ${info.spots} cupos` : ''}
               className={`
                 aspect-square flex items-center justify-center rounded-lg border text-sm font-medium
