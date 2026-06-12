@@ -301,6 +301,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     success:      true,
+    booking_id:   booking.id,
     booking_code: bookingCode,
     status:       booking.status ?? 'pending',
   }, { status: 201 });

@@ -58,7 +58,8 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [bookingCode, setBookingCode] = useState('');
+  const [bookingCode, setBookingCode]   = useState('');
+  const [bookingId, setBookingId]       = useState('');
 
   // Paso 1
   const [bookingType, setBookingType]     = useState<'private' | 'group'>('private');
@@ -115,7 +116,7 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
     );
   }
 
-  // ─── Submit ───────────────────────────────────────────────
+  // ─── Submit: crear reserva + redirigir a MercadoPago ────────
   async function handleSubmit() {
     setLoading(true);
     setError('');
@@ -131,20 +132,43 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
     };
 
     try {
-      const res = await fetch('/api/bookings', {
+      // 1. Crear reserva
+      const bookingRes = await fetch('/api/bookings', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
+      if (!bookingRes.ok) {
+        const body = await bookingRes.json().catch(() => ({}));
         throw new Error((body as { error?: string }).error ?? t('error'));
       }
 
-      const data = await res.json() as { booking_code: string };
-      setBookingCode(data.booking_code);
-      setStep(5);
+      const bookingData = await bookingRes.json() as { booking_code: string; booking_id: string };
+      setBookingCode(bookingData.booking_code);
+      setBookingId(bookingData.booking_id);
+
+      // 2. Crear preferencia de MercadoPago
+      const mpRes = await fetch('/api/mp-checkout', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ booking_id: bookingData.booking_id }),
+      });
+
+      if (!mpRes.ok) {
+        // Si falla MP, igual mostramos confirmación (pago pendiente por WhatsApp)
+        setStep(5);
+        return;
+      }
+
+      const mpData = await mpRes.json() as { init_point?: string; sandbox_init_point?: string };
+      const redirectUrl = mpData.init_point ?? mpData.sandbox_init_point;
+
+      if (redirectUrl) {
+        window.location.href = redirectUrl;
+      } else {
+        setStep(5);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error'));
     } finally {
