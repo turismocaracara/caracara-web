@@ -29,6 +29,28 @@ const BookingSchema = z.object({
   notes:        z.string().max(500).optional(),
 });
 
+async function getAvailableVans(date: string): Promise<number> {
+  const [instancesRes, vansRes, blocksRes] = await Promise.all([
+    supabase
+      .from('tour_instances')
+      .select('id')
+      .in('status', ['forming', 'confirmed'])
+      .eq('date', date),
+    supabase
+      .from('vans')
+      .select('id')
+      .eq('active', true),
+    supabase
+      .from('van_blocks')
+      .select('van_id')
+      .eq('date', date),
+  ]);
+  const totalVans   = vansRes.data?.length ?? 0;
+  const blockedVans = new Set((blocksRes.data ?? []).map(b => b.van_id)).size;
+  const usedVans    = instancesRes.data?.length ?? 0;
+  return totalVans - blockedVans - usedVans;
+}
+
 function generateBookingCode(year: number, seq: number): string {
   return `CC-${year}-${String(seq).padStart(4, '0')}`;
 }
@@ -114,31 +136,61 @@ export async function POST(req: NextRequest) {
   const bookingCode = generateBookingCode(year, seq);
   const cancellationToken = generateCancellationToken();
 
-  // Crear o reutilizar tour_instance
-  // Fase A: un solo registro por tour+fecha+tipo (sin múltiples vans)
-  const { data: existingInstance } = await supabase
-    .from('tour_instances')
-    .select('id, current_pax, max_pax')
-    .eq('tour_slug', data.tour_slug)
-    .eq('date', data.tour_date)
-    .eq('booking_type', data.booking_type)
-    .eq('status', 'forming')
-    .maybeSingle();
-
+  // ─── Crear o reutilizar tour_instance con validación de disponibilidad ───
   let instanceId: string;
-  if (existingInstance && data.booking_type === 'group') {
-    // Tour grupal: reutilizar instancia existente
-    const newPax = existingInstance.current_pax + data.pax;
-    if (newPax > existingInstance.max_pax) {
-      return NextResponse.json({ error: 'No hay cupos disponibles para esta fecha' }, { status: 409 });
-    }
-    await supabase
+
+  if (data.booking_type === 'group') {
+    // Tour grupal: buscar instancia forming del mismo tour+fecha para reutilizar
+    const { data: existingInstance } = await supabase
       .from('tour_instances')
-      .update({ current_pax: newPax })
-      .eq('id', existingInstance.id);
-    instanceId = existingInstance.id;
+      .select('id, current_pax, max_pax')
+      .eq('tour_slug', data.tour_slug)
+      .eq('date', data.tour_date)
+      .eq('booking_type', 'group')
+      .eq('status', 'forming')
+      .maybeSingle();
+
+    if (existingInstance) {
+      // Hay instancia grupal activa: sumar pax si cabe
+      const newPax = existingInstance.current_pax + data.pax;
+      if (newPax > existingInstance.max_pax) {
+        return NextResponse.json({ error: 'No hay cupos disponibles para esta fecha' }, { status: 409 });
+      }
+      await supabase
+        .from('tour_instances')
+        .update({ current_pax: newPax })
+        .eq('id', existingInstance.id);
+      instanceId = existingInstance.id;
+    } else {
+      // No hay instancia grupal: necesita van nueva → verificar disponibilidad
+      const freeVans = await getAvailableVans(data.tour_date);
+      if (freeVans <= 0) {
+        return NextResponse.json({ error: 'No hay disponibilidad para esta fecha. Por favor elige otra fecha.' }, { status: 409 });
+      }
+      const { data: newInstance, error: instanceError } = await supabase
+        .from('tour_instances')
+        .insert({
+          tour_slug:    data.tour_slug,
+          date:         data.tour_date,
+          booking_type: 'group',
+          current_pax:  data.pax,
+          max_pax:      9,
+          status:       'forming',
+        })
+        .select('id')
+        .single();
+      if (instanceError || !newInstance) {
+        console.error('Instance insert error:', instanceError);
+        return NextResponse.json({ error: 'Failed to create tour instance' }, { status: 500 });
+      }
+      instanceId = newInstance.id;
+    }
   } else {
-    // Tour privado o primera reserva grupal: crear nueva instancia
+    // Tour privado: siempre necesita van nueva → verificar disponibilidad
+    const freeVans = await getAvailableVans(data.tour_date);
+    if (freeVans <= 0) {
+      return NextResponse.json({ error: 'No hay disponibilidad para esta fecha. Por favor elige otra fecha.' }, { status: 409 });
+    }
     const { data: newInstance, error: instanceError } = await supabase
       .from('tour_instances')
       .insert({
@@ -151,7 +203,6 @@ export async function POST(req: NextRequest) {
       })
       .select('id')
       .single();
-
     if (instanceError || !newInstance) {
       console.error('Instance insert error:', instanceError);
       return NextResponse.json({ error: 'Failed to create tour instance' }, { status: 500 });
