@@ -85,7 +85,7 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
 
   // ─── Sincronizar array de pasajeros con pax ──────────────
   function handlePaxChange(n: number) {
-    const newPax = Math.max(1, Math.min(availableSpots, n));
+    const newPax = Math.max(1, Math.min(18, n));
     setPax(newPax);
     setPassengers(prev => {
       if (prev.length === newPax) return prev;
@@ -99,8 +99,10 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
   }
 
   // ─── Validaciones por paso ────────────────────────────────
+  const paxExceedsSpots = tourDate !== '' && pax > availableSpots;
+
   function step1Valid(): boolean {
-    return tourDate !== '' && pax >= 1;
+    return tourDate !== '' && pax >= 1 && !paxExceedsSpots;
   }
 
   function step2Valid(): boolean {
@@ -356,9 +358,19 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
                 onClick={() => handlePaxChange(pax + 1)}
                 className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-lg font-semibold hover:border-teal hover:text-teal transition-colors"
               >+</button>
-              <span className="text-sm text-gray-400 ml-1">(máx. {availableSpots})</span>
+              <span className="text-sm text-gray-400 ml-1">(máx. 18)</span>
             </div>
           </Input>
+
+          {paxExceedsSpots && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {locale === 'en'
+                ? `Only ${availableSpots} spot(s) available on this date. Please choose another date or reduce the number of passengers.`
+                : locale === 'pt'
+                ? `Apenas ${availableSpots} vaga(s) disponível nesta data. Escolha outra data ou reduza o número de passageiros.`
+                : `Solo quedan ${availableSpots} cupo(s) para este día. Elige otra fecha o reduce el número de pasajeros.`}
+            </p>
+          )}
 
           <button
             type="button"
