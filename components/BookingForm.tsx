@@ -58,8 +58,7 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [bookingCode, setBookingCode]   = useState('');
-  const [bookingId, setBookingId]       = useState('');
+  const [bookingCode, setBookingCode] = useState('');
 
   // Paso 1
   const [bookingType, setBookingType]     = useState<'private' | 'group'>('private');
@@ -146,7 +145,6 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
 
       const bookingData = await bookingRes.json() as { booking_code: string; booking_id: string };
       setBookingCode(bookingData.booking_code);
-      setBookingId(bookingData.booking_id);
 
       // 2. Crear preferencia de MercadoPago
       const mpRes = await fetch('/api/mp-checkout', {

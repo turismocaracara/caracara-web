@@ -7,7 +7,7 @@ const mp = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN!,
 });
 
-function verifySignature(req: NextRequest, rawBody: string): boolean {
+function verifySignature(req: NextRequest, _rawBody: string): boolean {
   const secret = process.env.MP_WEBHOOK_SECRET;
   if (!secret) return true; // sin secret configurado, saltar verificación (solo en dev)
 
