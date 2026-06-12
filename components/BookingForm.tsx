@@ -4,9 +4,17 @@ import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import BookingCalendar from './BookingCalendar';
 
+interface PriceTier {
+  paxMin: number;
+  paxMax: number;
+  price:  number;
+}
+
 interface BookingFormProps {
-  tourName: string;
-  tourSlug: string;
+  tourName:       string;
+  tourSlug:       string;
+  groupPrice?:    number;
+  privatePricing?: PriceTier[];
 }
 
 interface PassengerData {
@@ -51,7 +59,11 @@ function Input({ label, required, children }: { label: string; required?: boolea
 const inputClass = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full';
 const selectClass = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full bg-white';
 
-export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
+function fmtCLP(n: number) {
+  return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n);
+}
+
+export default function BookingForm({ tourName, tourSlug, groupPrice, privatePricing }: BookingFormProps) {
   const t   = useTranslations('booking');
   const locale = useLocale() as 'es' | 'en' | 'pt';
 
@@ -100,6 +112,14 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
 
   // ─── Validaciones por paso ────────────────────────────────
   const paxExceedsSpots = tourDate !== '' && pax > availableSpots;
+
+  // Precio calculado en el frontend para mostrarlo antes del pago
+  const pricePerPerson: number = (() => {
+    if (bookingType === 'group') return groupPrice ?? 0;
+    const tier = privatePricing?.find(t => pax >= t.paxMin && pax <= t.paxMax);
+    return tier?.price ?? 0;
+  })();
+  const totalPrice = pricePerPerson * pax;
 
   function step1Valid(): boolean {
     return tourDate !== '' && pax >= 1 && !paxExceedsSpots;
@@ -517,12 +537,22 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
             ))}
           </div>
 
-          {/* Nota de pago */}
-          <div className="bg-orange/5 border border-orange/20 rounded-xl p-4">
-            <p className="text-sm text-gray-700">
-              {bookingType === 'private' ? labels.privateTourMsg : labels.groupTourMsg}
-            </p>
-          </div>
+          {/* Precio */}
+          {totalPrice > 0 && (
+            <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-1.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">
+                  {fmtCLP(pricePerPerson)} × {pax} {locale === 'en' ? 'passengers' : locale === 'pt' ? 'passageiros' : 'pasajeros'}
+                </span>
+                <span className="font-bold text-teal text-base">{fmtCLP(totalPrice)}</span>
+              </div>
+              <p className="text-xs text-gray-400">
+                {locale === 'en' ? 'You will be redirected to MercadoPago to complete payment.'
+                : locale === 'pt' ? 'Você será redirecionado ao MercadoPago para concluir o pagamento.'
+                : 'Serás redirigido a MercadoPago para completar el pago.'}
+              </p>
+            </div>
+          )}
 
           {/* Notas */}
           <div className="flex flex-col gap-1.5">
@@ -566,9 +596,14 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
               type="button"
               disabled={loading}
               onClick={handleSubmit}
-              className="flex-1 bg-orange hover:bg-orange/90 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors"
+              className="flex-1 bg-orange hover:bg-orange/90 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
             >
-              {loading ? '...' : labels.confirm}
+              {loading ? '...' : (
+                <>
+                  {locale === 'en' ? 'Pay with MercadoPago' : locale === 'pt' ? 'Pagar com MercadoPago' : 'Pagar con MercadoPago'}
+                  {!loading && ' →'}
+                </>
+              )}
             </button>
           </div>
         </div>

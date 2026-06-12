@@ -308,7 +308,12 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
                 {t('booking.title', { tourName })}
               </h2>
               <p className="text-sm text-gray-500 mb-5">{t('booking.subtitle')}</p>
-              <BookingForm tourName={tourName} tourSlug={tour.slug} />
+              <BookingForm
+                tourName={tourName}
+                tourSlug={tour.slug}
+                groupPrice={tour.groupPrice}
+                privatePricing={tour.privatePricing}
+              />
             </div>
           </div>
         </div>
