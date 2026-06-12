@@ -173,7 +173,12 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
         body:    JSON.stringify({ booking_id: bookingData.booking_id }),
       });
 
-      const mpData = await mpRes.json() as { init_point?: string; sandbox_init_point?: string; error?: string };
+      let mpData: { init_point?: string; sandbox_init_point?: string; error?: string } = {};
+      try {
+        mpData = await mpRes.json();
+      } catch {
+        throw new Error('Error al conectar con MercadoPago (respuesta inválida)');
+      }
 
       if (!mpRes.ok) {
         throw new Error(mpData.error ?? 'Error al conectar con MercadoPago');
@@ -482,6 +487,23 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
                     type="email"
                     value={p.email}
                     onChange={e => updatePassenger(i, 'email', e.target.value)}
+                    onBlur={i === 0 ? async e => {
+                      const email = e.target.value.trim();
+                      if (!email.includes('@')) return;
+                      try {
+                        const res = await fetch(`/api/clients?email=${encodeURIComponent(email)}`);
+                        if (!res.ok) return;
+                        const client = await res.json() as { name?: string; phone?: string; country?: string; id_type?: string; id_number?: string };
+                        if (client.name) setPassengers(prev => prev.map((p, idx) => idx === 0 ? {
+                          ...p,
+                          name:      p.name      || client.name      || '',
+                          phone:     p.phone     || client.phone     || '',
+                          country:   p.country   || client.country   || '',
+                          id_type:   p.id_type   || (client.id_type as 'rut' | 'passport') || 'passport',
+                          id_number: p.id_number || client.id_number || '',
+                        } : p));
+                      } catch { /* no interrumpir el flujo */ }
+                    } : undefined}
                     placeholder="maria@email.com"
                     className={inputClass}
                   />

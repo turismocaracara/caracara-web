@@ -14,6 +14,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
+  try {
+    return await handleCheckout(body);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Error interno';
+    console.error('[mp-checkout] unhandled error:', err);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+async function handleCheckout(body: unknown) {
+
   const { booking_id } = body as { booking_id?: string };
   if (!booking_id) {
     return NextResponse.json({ error: 'booking_id requerido' }, { status: 400 });
