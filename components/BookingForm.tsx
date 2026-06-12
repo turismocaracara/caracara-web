@@ -173,20 +173,21 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
         body:    JSON.stringify({ booking_id: bookingData.booking_id }),
       });
 
+      const mpData = await mpRes.json() as { init_point?: string; sandbox_init_point?: string; error?: string };
+
       if (!mpRes.ok) {
-        // Si falla MP, igual mostramos confirmación (pago pendiente por WhatsApp)
-        setStep(5);
-        return;
+        throw new Error(mpData.error ?? 'Error al conectar con MercadoPago');
       }
 
-      const mpData = await mpRes.json() as { init_point?: string; sandbox_init_point?: string };
-      const redirectUrl = mpData.init_point ?? mpData.sandbox_init_point;
+      // Preferencia creada: redirigir al checkout de MP
+      // sandbox_init_point para credenciales de prueba, init_point para producción
+      const redirectUrl = mpData.sandbox_init_point ?? mpData.init_point;
 
-      if (redirectUrl) {
-        window.location.href = redirectUrl;
-      } else {
-        setStep(5);
+      if (!redirectUrl) {
+        throw new Error('MercadoPago no devolvió una URL de pago');
       }
+
+      window.location.href = redirectUrl;
     } catch (err) {
       setError(err instanceof Error ? err.message : t('error'));
     } finally {
