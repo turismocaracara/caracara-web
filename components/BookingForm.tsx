@@ -63,14 +63,18 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
   // Paso 1
   const [bookingType, setBookingType]     = useState<'private' | 'group'>('private');
   const [tourDate, setTourDate]           = useState('');
-  const [dateIsForming, setDateIsForming] = useState(false);
-  const [pax, setPax]                     = useState(2);
+  const [dateIsForming, setDateIsForming]   = useState(false);
+  const [availableSpots, setAvailableSpots] = useState(18);
+  const [pax, setPax]                       = useState(2);
 
-  function handleDateSelect(date: string, status: 'available' | 'forming' | 'full' | 'blocked' | 'past') {
+  function handleDateSelect(date: string, status: 'available' | 'forming' | 'full' | 'blocked' | 'past', spots: number) {
     setTourDate(date);
     const forming = status === 'forming';
     setDateIsForming(forming);
+    setAvailableSpots(spots > 0 ? spots : 18);
     if (forming) setBookingType('group');
+    // Ajustar pax si supera los cupos disponibles
+    setPax(prev => Math.min(prev, spots > 0 ? spots : 18));
   }
 
   // Paso 2 — pasajeros
@@ -81,7 +85,7 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
 
   // ─── Sincronizar array de pasajeros con pax ──────────────
   function handlePaxChange(n: number) {
-    const newPax = Math.max(1, Math.min(18, n));
+    const newPax = Math.max(1, Math.min(availableSpots, n));
     setPax(newPax);
     setPassengers(prev => {
       if (prev.length === newPax) return prev;
@@ -352,7 +356,7 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
                 onClick={() => handlePaxChange(pax + 1)}
                 className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-lg font-semibold hover:border-teal hover:text-teal transition-colors"
               >+</button>
-              <span className="text-sm text-gray-400 ml-1">(máx. 18)</span>
+              <span className="text-sm text-gray-400 ml-1">(máx. {availableSpots})</span>
             </div>
           </Input>
 
