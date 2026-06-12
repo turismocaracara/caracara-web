@@ -244,14 +244,11 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       continue;
     }
 
-    // Determinar si está en formación (hay instancia grupal de este tour bajo el mínimo)
-    const groupMinPax: number = tour.group_min_pax ?? 4;
-    const hasFormingInstance = dayInstances.some(
-      i => i.booking_type === 'group' && (i.current_pax ?? 0) < groupMinPax
-    );
+    // Si no hay vans libres pero quedan cupos en instancia grupal → forming
+    // (los cupos restantes son solo para grupo, no para privado)
+    const hasGroupRemaining = formingGroupRemaining > 0;
 
-    if (hasFormingInstance && freeVans === 0) {
-      // Solo hay instancia grupal en formación, sin vans libres para nuevas reservas privadas
+    if (freeVans === 0 && hasGroupRemaining) {
       availability[ds] = { status: 'forming', spots, pax_booked: totalPaxBooked };
     } else {
       availability[ds] = { status: 'available', spots, pax_booked: totalPaxBooked };
