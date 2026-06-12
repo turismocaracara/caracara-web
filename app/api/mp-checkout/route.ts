@@ -17,8 +17,15 @@ export async function POST(req: NextRequest) {
   try {
     return await handleCheckout(body);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Error interno';
-    console.error('[mp-checkout] unhandled error:', err);
+    let msg = 'Error interno';
+    if (err instanceof Error) {
+      msg = err.message;
+    } else if (typeof err === 'string') {
+      msg = err;
+    } else {
+      try { msg = JSON.stringify(err); } catch { /* noop */ }
+    }
+    console.error('[mp-checkout] error:', msg, err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
