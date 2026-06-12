@@ -285,6 +285,22 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
         <div className="flex flex-col gap-5">
           <h3 className="font-semibold text-ink text-lg">{labels.step1Title}</h3>
 
+          {/* Fecha — calendario con disponibilidad real */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-ink">
+              {labels.date}<span className="text-orange ml-0.5">*</span>
+            </label>
+            <div className="border border-gray-200 rounded-xl p-3">
+              <BookingCalendar
+                tourSlug={tourSlug}
+                bookingType={bookingType}
+                selected={tourDate}
+                onSelect={handleDateSelect}
+                locale={locale}
+              />
+            </div>
+          </div>
+
           {/* Tipo de tour */}
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-ink">{labels.tourType}<span className="text-orange ml-0.5">*</span></label>
@@ -320,22 +336,6 @@ export default function BookingForm({ tourName, tourSlug }: BookingFormProps) {
                   : 'Esta fecha solo acepta tour grupal — las vans privadas están ocupadas.'}
               </p>
             )}
-          </div>
-
-          {/* Fecha — calendario con disponibilidad real */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-ink">
-              {labels.date}<span className="text-orange ml-0.5">*</span>
-            </label>
-            <div className="border border-gray-200 rounded-xl p-3">
-              <BookingCalendar
-                tourSlug={tourSlug}
-                bookingType={bookingType}
-                selected={tourDate}
-                onSelect={handleDateSelect}
-                locale={locale}
-              />
-            </div>
           </div>
 
           {/* Pax */}
