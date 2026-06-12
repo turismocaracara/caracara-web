@@ -62,7 +62,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const startDate = dateStr(year, month, 1);
   const endDate   = dateStr(year, month, daysInMonth(year, month));
 
-  const [tourRes, blackoutsRes, tourBlackoutsRes, vanBlocksRes, instancesRes, vansRes] =
+  const [tourRes, blackoutsRes, tourBlackoutsRes, vanBlocksRes, instancesRes, allInstancesRes, vansRes] =
     await Promise.all([
       // Tour info
       supabase
@@ -93,11 +93,19 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         .gte('date', startDate)
         .lte('date', endDate),
 
-      // Instancias de tour existentes en el mes
+      // Instancias de ESTE tour en el mes (para lógica grupal y forming)
       supabase
         .from('tour_instances')
         .select('id, date, booking_type, current_pax, max_pax, status, van_id')
         .eq('tour_slug', slug)
+        .in('status', ['forming', 'confirmed'])
+        .gte('date', startDate)
+        .lte('date', endDate),
+
+      // TODAS las instancias del mes (para contar vans usadas globalmente)
+      supabase
+        .from('tour_instances')
+        .select('id, date')
         .in('status', ['forming', 'confirmed'])
         .gte('date', startDate)
         .lte('date', endDate),
@@ -118,10 +126,11 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const tourBlackouts = new Set(
     (tourBlackoutsRes.data ?? []).map(b => b.date.slice(0, 10))
   );
-  const vanBlocks  = vanBlocksRes.data ?? [];
-  const instances  = instancesRes.data ?? [];
-  const allVans    = vansRes.data ?? [];
-  const totalVans  = allVans.length;
+  const vanBlocks   = vanBlocksRes.data ?? [];
+  const instances   = instancesRes.data ?? [];
+  const allInstances = allInstancesRes.data ?? [];
+  const allVans     = vansRes.data ?? [];
+  const totalVans   = allVans.length;
 
   if (!tour.active) {
     return NextResponse.json({ error: 'Tour inactivo' }, { status: 404 });
@@ -150,12 +159,19 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     vanBlocksByDate.get(d)!.add(vb.van_id);
   }
 
-  // Instancias por fecha
+  // Instancias de este tour por fecha
   const instancesByDate = new Map<string, typeof instances>();
   for (const inst of instances) {
     const d = inst.date.slice(0, 10);
     if (!instancesByDate.has(d)) instancesByDate.set(d, []);
     instancesByDate.get(d)!.push(inst);
+  }
+
+  // Todas las instancias por fecha (para contar vans usadas globalmente)
+  const allInstancesByDate = new Map<string, number>();
+  for (const inst of allInstances) {
+    const d = inst.date.slice(0, 10);
+    allInstancesByDate.set(d, (allInstancesByDate.get(d) ?? 0) + 1);
   }
 
   // ─── Calcular disponibilidad por día ──────────────────────────────────────
@@ -209,29 +225,33 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       continue;
     }
 
-    // 7. Instancias existentes ese día para este tour
+    // 7. Calcular vans realmente libres (considerando todos los tours ese día)
+    const allVansUsedToday = allInstancesByDate.get(ds) ?? 0;
+    const freeVans = availableVans - allVansUsedToday;
+
+    // Instancias de ESTE tour ese día (para lógica grupal)
     const dayInstances = instancesByDate.get(ds) ?? [];
     const totalPaxBooked = dayInstances.reduce((sum, i) => sum + (i.current_pax ?? 0), 0);
-    const vansUsed = dayInstances.length;
-    const vansAvailableForNew = availableVans - vansUsed;
 
-    // Capacidad total disponible para reservas nuevas
-    const totalCapacity = availableVans * 9; // 9 = max_pax por van (Fase A)
-    const spots = Math.max(0, totalCapacity - totalPaxBooked);
+    // Cupos = vans libres × capacidad + espacio restante en instancias grupales forming de este tour
+    const formingGroupRemaining = dayInstances
+      .filter(i => i.booking_type === 'group' && i.status === 'forming')
+      .reduce((sum, i) => sum + Math.max(0, (i.max_pax ?? 9) - (i.current_pax ?? 0)), 0);
+    const spots = Math.max(0, freeVans * 9 + formingGroupRemaining);
 
     if (spots === 0) {
       availability[ds] = { status: 'full', spots: 0, pax_booked: totalPaxBooked };
       continue;
     }
 
-    // Determinar si está en formación (hay pax pero no se alcanza el mínimo grupal)
+    // Determinar si está en formación (hay instancia grupal de este tour bajo el mínimo)
     const groupMinPax: number = tour.group_min_pax ?? 4;
     const hasFormingInstance = dayInstances.some(
       i => i.booking_type === 'group' && (i.current_pax ?? 0) < groupMinPax
     );
 
-    if (hasFormingInstance && vansAvailableForNew === 0) {
-      // Solo hay instancias grupales en formación, sin vans libres para privados
+    if (hasFormingInstance && freeVans === 0) {
+      // Solo hay instancia grupal en formación, sin vans libres para nuevas reservas privadas
       availability[ds] = { status: 'forming', spots, pax_booked: totalPaxBooked };
     } else {
       availability[ds] = { status: 'available', spots, pax_booked: totalPaxBooked };
