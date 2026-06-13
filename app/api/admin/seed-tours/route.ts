@@ -11,12 +11,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const descEs = (messagesEs as unknown as Record<string, Record<string, string>>).tourDesc ?? {};
-  const descEn = (messagesEn as unknown as Record<string, Record<string, string>>).tourDesc ?? {};
-  const descPt = (messagesPt as unknown as Record<string, Record<string, string>>).tourDesc ?? {};
+  const msgs = {
+    es: messagesEs as unknown as Record<string, Record<string, string>>,
+    en: messagesEn as unknown as Record<string, Record<string, string>>,
+    pt: messagesPt as unknown as Record<string, Record<string, string>>,
+  };
+
+  const nameEs = msgs.es.tourNames ?? {};
+  const nameEn = msgs.en.tourNames ?? {};
+  const namePt = msgs.pt.tourNames ?? {};
+  const descEs = msgs.es.tourDesc  ?? {};
+  const descEn = msgs.en.tourDesc  ?? {};
+  const descPt = msgs.pt.tourDesc  ?? {};
 
   const updates = TOURS.map(tour => ({
     slug:            tour.slug,
+    name_es:         nameEs[tour.slug] ?? tour.slug,
+    name_en:         nameEn[tour.slug] ?? tour.slug,
+    name_pt:         namePt[tour.slug] ?? tour.slug,
     category:        tour.category,
     difficulty:      tour.difficulty,
     hide_difficulty: tour.hideDifficulty ?? false,
@@ -24,14 +36,14 @@ export async function POST(req: NextRequest) {
     max_pax:         tour.maxPax,
     hide_pax:        tour.hidePax ?? false,
     highlights:      tour.highlights,
-    includes_keys:   tour.includesKeys   ?? [],
-    excludes_keys:   tour.excludesKeys   ?? [],
-    itinerary:       tour.itinerary      ?? [],
-    wine_convenios:  tour.wineConvenios  ?? [],
+    includes_keys:   tour.includesKeys  ?? [],
+    excludes_keys:   tour.excludesKeys  ?? [],
+    itinerary:       tour.itinerary     ?? [],
+    wine_convenios:  tour.wineConvenios ?? [],
     images:          [],
-    description_es:  descEs[tour.slug]   ?? null,
-    description_en:  descEn[tour.slug]   ?? null,
-    description_pt:  descPt[tour.slug]   ?? null,
+    description_es:  descEs[tour.slug]  ?? null,
+    description_en:  descEn[tour.slug]  ?? null,
+    description_pt:  descPt[tour.slug]  ?? null,
   }));
 
   const { error } = await supabase
