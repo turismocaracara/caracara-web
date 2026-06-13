@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    return await handleCheckout(body);
+    return await handleCheckout(req, body);
   } catch (err) {
     let msg = 'Error interno';
     if (err instanceof Error) {
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function handleCheckout(body: unknown) {
+async function handleCheckout(req: NextRequest, body: unknown) {
 
   const { booking_id } = body as { booking_id?: string };
   if (!booking_id) {
@@ -107,8 +107,15 @@ async function handleCheckout(body: unknown) {
     .update({ price_per_person: pricePerPerson, total_amount: totalAmount })
     .eq('id', booking_id);
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://turismocaracara.cl';
-  const locale = booking.locale ?? 'es';
+  // Derivar baseUrl desde headers para evitar valores mal formateados en env vars
+  const envBase = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/+$/, '');
+  const proto   = req.headers.get('x-forwarded-proto') ?? 'https';
+  const host    = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'turismocaracara.cl';
+  const baseUrl = envBase ?? `${proto}://${host}`;
+  const locale  = booking.locale ?? 'es';
+
+  const successUrl = `${baseUrl}/${locale}/reservas/${booking.booking_code}`;
+  console.log('[mp-checkout] back_url:', successUrl);
 
   // Crear preferencia en MercadoPago
   const preference = new Preference(mp);
@@ -127,9 +134,9 @@ async function handleCheckout(body: unknown) {
         email: clientEmail,
       },
       back_urls: {
-        success: `${baseUrl}/${locale}/reservas/${booking.booking_code}`,
-        failure: `${baseUrl}/${locale}/reservas/${booking.booking_code}`,
-        pending: `${baseUrl}/${locale}/reservas/${booking.booking_code}`,
+        success: successUrl,
+        failure: successUrl,
+        pending: successUrl,
       },
       auto_return:          'approved',
       notification_url:     `${baseUrl}/api/mp-webhook`,
