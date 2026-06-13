@@ -47,6 +47,12 @@ export async function POST(req: NextRequest) {
 
   const paymentId = String(notification.data.id);
 
+  // Notificación de prueba del panel de MP (ID siempre es "123456")
+  if (paymentId === '123456') {
+    console.log('[mp-webhook] test notification received OK');
+    return NextResponse.json({ ok: true });
+  }
+
   // Obtener detalles del pago desde MP
   let payment;
   try {
