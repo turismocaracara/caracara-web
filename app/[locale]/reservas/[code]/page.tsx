@@ -4,7 +4,7 @@ import Link from 'next/link';
 
 interface Props {
   params: { locale: string; code: string };
-  searchParams: { status?: string };
+  searchParams: { status?: string; collection_status?: string };
 }
 
 const LABELS = {
@@ -74,7 +74,8 @@ function fmtDate(dateStr: string, locale: string): string {
 export default async function ReservaPage({ params, searchParams }: Props) {
   const locale = (params.locale ?? 'es') as 'es' | 'en' | 'pt';
   const L = LABELS[locale] ?? LABELS.es;
-  const status = searchParams.status ?? 'pending';
+  // MP agrega collection_status o status a la URL de retorno
+  const status = searchParams.collection_status ?? searchParams.status ?? 'pending';
 
   const { data: booking } = await supabase
     .from('bookings')

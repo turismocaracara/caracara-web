@@ -127,9 +127,9 @@ async function handleCheckout(body: unknown) {
         email: clientEmail,
       },
       back_urls: {
-        success: `${baseUrl}/${locale}/reservas/${booking.booking_code}?status=approved`,
-        failure: `${baseUrl}/${locale}/reservas/${booking.booking_code}?status=rejected`,
-        pending: `${baseUrl}/${locale}/reservas/${booking.booking_code}?status=pending`,
+        success: `${baseUrl}/${locale}/reservas/${booking.booking_code}`,
+        failure: `${baseUrl}/${locale}/reservas/${booking.booking_code}`,
+        pending: `${baseUrl}/${locale}/reservas/${booking.booking_code}`,
       },
       auto_return:          'approved',
       notification_url:     `${baseUrl}/api/mp-webhook`,
