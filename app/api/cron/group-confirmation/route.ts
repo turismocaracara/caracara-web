@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Deduplicar tours únicos para el día
-  const uniqueTours = [...new Set(instances.map(i => i.tour_slug))];
+  const uniqueTours = Array.from(new Set(instances.map(i => i.tour_slug)));
 
   const results: Record<string, unknown> = {};
 
