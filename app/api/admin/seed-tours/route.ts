@@ -46,14 +46,21 @@ export async function POST(req: NextRequest) {
     description_pt:  descPt[tour.slug]  ?? null,
   }));
 
-  const { error } = await supabase
-    .from('tours')
-    .upsert(updates, { onConflict: 'slug' });
-
-  if (error) {
-    console.error('[seed-tours] error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  let errorCount = 0;
+  for (const { slug, name_es, name_en, name_pt, ...fields } of updates) {
+    const { error } = await supabase
+      .from('tours')
+      .update(fields)
+      .eq('slug', slug);
+    if (error) {
+      console.error(`[seed-tours] error updating ${slug}:`, error.message);
+      errorCount++;
+    }
   }
 
-  return NextResponse.json({ ok: true, seeded: updates.length });
+  if (errorCount > 0) {
+    return NextResponse.json({ error: `${errorCount} tours fallaron al actualizar` }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, updated: updates.length });
 }
