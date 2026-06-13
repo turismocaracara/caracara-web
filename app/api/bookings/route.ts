@@ -51,148 +51,6 @@ async function getAvailableVans(date: string): Promise<number> {
   return totalVans - blockedVans - usedVans;
 }
 
-// ─── Algoritmo de redistribución de grupos indivisibles ──────────────────────
-
-// Encuentra la partición de grupos en vans que maximiza pax en van[0].
-// Devuelve assignment[i] = índice de van para el grupo i, o null si es imposible.
-function findBestPartition(
-  groupPax: number[],
-  numVans: number,
-  vanCapacity = 9,
-  minPax = 4
-): number[] | null {
-  let bestAssignment: number[] | null = null;
-  let bestVan0Pax = -1;
-
-  const vanPax = new Array(numVans).fill(0);
-  const assignment: number[] = [];
-
-  function backtrack(idx: number) {
-    if (idx === groupPax.length) {
-      // Validar: cada van con al menos un grupo debe tener ≥ minPax
-      const vanUsed = new Array(numVans).fill(false);
-      for (const a of assignment) vanUsed[a] = true;
-      const valid = vanPax.every((pax, v) => !vanUsed[v] || pax >= minPax);
-      if (valid && (bestAssignment === null || vanPax[0] > bestVan0Pax)) {
-        bestAssignment = [...assignment];
-        bestVan0Pax = vanPax[0];
-      }
-      return;
-    }
-    for (let v = 0; v < numVans; v++) {
-      if (vanPax[v] + groupPax[idx] <= vanCapacity) {
-        vanPax[v] += groupPax[idx];
-        assignment.push(v);
-        backtrack(idx + 1);
-        assignment.pop();
-        vanPax[v] -= groupPax[idx];
-      }
-    }
-  }
-
-  backtrack(0);
-  return bestAssignment;
-}
-
-// Intenta redistribuir grupos existentes + nuevo grupo entre vans disponibles.
-// Devuelve el tour_instance_id donde debe ir el nuevo booking, o null si es imposible.
-async function tryGroupRedistribution(
-  tourSlug: string,
-  tourDate: string,
-  newGroupPax: number,
-  groupMinPax: number,
-  freeVans: number
-): Promise<string | null> {
-
-  // 1. Obtener todas las instancias grupales activas para este tour+fecha
-  const { data: existingInstances } = await supabase
-    .from('tour_instances')
-    .select('id, current_pax, status')
-    .eq('tour_slug', tourSlug)
-    .eq('date', tourDate)
-    .eq('booking_type', 'group')
-    .in('status', ['forming', 'confirmed']);
-
-  const instances = existingInstances ?? [];
-  const totalVans = instances.length + freeVans;
-  if (totalVans < 2) return null; // necesita al menos 2 vans
-
-  // 2. Obtener bookings individuales de esas instancias (grupos indivisibles)
-  const instanceIds = instances.map(i => i.id);
-  const { data: existingBookings } = await supabase
-    .from('bookings')
-    .select('id, tour_instance_id, pax')
-    .in('tour_instance_id', instanceIds)
-    .neq('status', 'cancelled');
-
-  const bookings = existingBookings ?? [];
-  const newGroupIdx = bookings.length; // índice del nuevo grupo en el array
-
-  // 3. Construir array de pax (grupos existentes + nuevo)
-  const allPax = [...bookings.map(b => b.pax), newGroupPax];
-
-  // 4. Ejecutar algoritmo (limitado a 2 vans por ahora — máximo de vans propias)
-  const numVans = Math.min(totalVans, 2);
-  const assignment = findBestPartition(allPax, numVans, 9, groupMinPax);
-  if (!assignment) return null;
-
-  // 5. Crear instancias nuevas para vans que no tienen instancia aún
-  const vanToInstance: (string | null)[] = instances.map(i => i.id);
-  for (let v = instances.length; v < numVans; v++) {
-    if (freeVans > v - instances.length) {
-      const { data: newInst } = await supabase
-        .from('tour_instances')
-        .insert({
-          tour_slug:    tourSlug,
-          date:         tourDate,
-          booking_type: 'group',
-          current_pax:  0,
-          max_pax:      9,
-          status:       'forming',
-        })
-        .select('id')
-        .single();
-      vanToInstance[v] = newInst?.id ?? null;
-    } else {
-      vanToInstance[v] = null;
-    }
-  }
-
-  // 6. Calcular nuevo current_pax por instancia
-  const newVanPax = new Array(numVans).fill(0);
-  for (let i = 0; i < allPax.length; i++) {
-    newVanPax[assignment[i]] += allPax[i];
-  }
-
-  // 7. Mover bookings que cambian de instancia
-  for (let i = 0; i < bookings.length; i++) {
-    const targetInstId = vanToInstance[assignment[i]];
-    if (targetInstId && bookings[i].tour_instance_id !== targetInstId) {
-      await supabase
-        .from('bookings')
-        .update({ tour_instance_id: targetInstId })
-        .eq('id', bookings[i].id);
-      console.log(`[redistrib] booking ${bookings[i].id} (${bookings[i].pax} pax) → instancia ${targetInstId}`);
-    }
-  }
-
-  // 8. Actualizar current_pax de todas las instancias
-  for (let v = 0; v < numVans; v++) {
-    const instId = vanToInstance[v];
-    if (instId) {
-      await supabase
-        .from('tour_instances')
-        .update({ current_pax: newVanPax[v] })
-        .eq('id', instId);
-    }
-  }
-
-  console.log(`[redistrib] resultado: ${vanToInstance.map((id, v) => `van${v+1}=${newVanPax[v]}pax`).join(', ')}`);
-
-  // 9. Retornar la instancia donde va el nuevo booking
-  const targetVan = assignment[newGroupIdx];
-  return vanToInstance[targetVan] ?? null;
-}
 
 function generateBookingCode(year: number, seq: number): string {
   return `CC-${year}-${String(seq).padStart(4, '0')}`;
@@ -283,19 +141,26 @@ export async function POST(req: NextRequest) {
   let instanceId: string;
 
   if (data.booking_type === 'group') {
-    // Tour grupal: obtener todas las instancias forming del mismo tour+fecha
-    const { data: formingInstances } = await supabase
+    // Tour grupal: verificar capacidad total sin redistribuir (la distribución ocurre a las 20:00)
+    const { data: groupInstances } = await supabase
       .from('tour_instances')
-      .select('id, current_pax, max_pax')
+      .select('id, current_pax')
       .eq('tour_slug', data.tour_slug)
       .eq('date', data.tour_date)
       .eq('booking_type', 'group')
-      .eq('status', 'forming');
+      .in('status', ['forming', 'confirmed']);
 
-    const instances = formingInstances ?? [];
+    const instances = groupInstances ?? [];
+    const currentTotal = instances.reduce((sum, i) => sum + i.current_pax, 0);
+    const freeVans = await getAvailableVans(data.tour_date);
+    const maxCapacity = (instances.length + freeVans) * 9;
 
-    // Paso 1: fit simple — buscar instancia donde el nuevo grupo quepa directamente
-    const fittingInstance = instances.find(inst => inst.current_pax + data.pax <= inst.max_pax);
+    if (currentTotal + data.pax > maxCapacity) {
+      return NextResponse.json({ error: 'No hay cupos disponibles para esta fecha' }, { status: 409 });
+    }
+
+    // Agregar a instancia existente con cupo, o crear una nueva
+    const fittingInstance = instances.find(i => i.current_pax + data.pax <= 9);
 
     if (fittingInstance) {
       await supabase
@@ -303,12 +168,7 @@ export async function POST(req: NextRequest) {
         .update({ current_pax: fittingInstance.current_pax + data.pax })
         .eq('id', fittingInstance.id);
       instanceId = fittingInstance.id;
-    } else if (instances.length === 0) {
-      // Primera reserva grupal para este tour+fecha: necesita van nueva
-      const freeVans = await getAvailableVans(data.tour_date);
-      if (freeVans <= 0) {
-        return NextResponse.json({ error: 'No hay disponibilidad para esta fecha. Por favor elige otra fecha.' }, { status: 409 });
-      }
+    } else {
       const { data: newInstance, error: instanceError } = await supabase
         .from('tour_instances')
         .insert({
@@ -326,20 +186,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to create tour instance' }, { status: 500 });
       }
       instanceId = newInstance.id;
-    } else {
-      // Hay instancias pero ninguna tiene cupo directo → intentar redistribución
-      const freeVans = await getAvailableVans(data.tour_date);
-      const groupMinPax = (tour as { group_min_pax?: number }).group_min_pax ?? 4;
-
-      const redistribInstId = await tryGroupRedistribution(
-        data.tour_slug, data.tour_date, data.pax, groupMinPax, freeVans
-      );
-
-      if (redistribInstId) {
-        instanceId = redistribInstId;
-      } else {
-        return NextResponse.json({ error: 'No hay cupos disponibles para esta fecha' }, { status: 409 });
-      }
     }
   } else {
     // Tour privado: siempre necesita van nueva → verificar disponibilidad
