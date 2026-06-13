@@ -11,9 +11,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const descEs = (messagesEs as Record<string, Record<string, string>>).tourDesc ?? {};
-  const descEn = (messagesEn as Record<string, Record<string, string>>).tourDesc ?? {};
-  const descPt = (messagesPt as Record<string, Record<string, string>>).tourDesc ?? {};
+  const descEs = (messagesEs as unknown as Record<string, Record<string, string>>).tourDesc ?? {};
+  const descEn = (messagesEn as unknown as Record<string, Record<string, string>>).tourDesc ?? {};
+  const descPt = (messagesPt as unknown as Record<string, Record<string, string>>).tourDesc ?? {};
 
   const updates = TOURS.map(tour => ({
     slug:            tour.slug,
