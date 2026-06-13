@@ -137,6 +137,7 @@ async function handleCheckout(req: NextRequest, body: unknown) {
         failure: successUrl,
         pending: successUrl,
       },
+      notification_url: `https://turismocaracara.cl/api/mp-webhook`,
     },
   });
 
