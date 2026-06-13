@@ -114,6 +114,12 @@ async function handleCheckout(req: NextRequest, body: unknown) {
   const successUrl = `${baseUrl}/${locale}/reservas/${booking.booking_code}`;
   console.log('[mp-checkout] back_url (json):', JSON.stringify(successUrl));
 
+  // Forzar enteros (CLP no tiene decimales; Supabase puede retornar numeric como string)
+  const unitPrice = Math.round(Number(pricePerPerson));
+  const quantity  = Math.round(Number(booking.pax));
+  const typeLabel = booking.booking_type === 'group' ? 'Grupal' : 'Privado';
+  const itemTitle = `${tourName ?? tourSlug} - ${typeLabel} - ${tourDate}`;
+
   // Crear preferencia en MercadoPago
   const preference = new Preference(mp);
   const pref = await preference.create({
@@ -121,9 +127,9 @@ async function handleCheckout(req: NextRequest, body: unknown) {
       external_reference: booking.booking_code,
       items: [{
         id:          tourSlug,
-        title:       `${tourName} — ${booking.booking_type === 'group' ? 'Tour grupal' : 'Tour privado'} · ${tourDate}`,
-        quantity:    booking.pax,
-        unit_price:  pricePerPerson,
+        title:       itemTitle,
+        quantity,
+        unit_price:  unitPrice,
         currency_id: 'CLP',
       }],
       back_urls: {
@@ -131,10 +137,11 @@ async function handleCheckout(req: NextRequest, body: unknown) {
         failure: successUrl,
         pending: successUrl,
       },
-      notification_url:     `${baseUrl}/api/mp-webhook`,
-      statement_descriptor: 'TURISMO CARACARA',
     },
   });
+
+  console.log('[mp-checkout] init_point:', JSON.stringify(pref.init_point));
+  console.log('[mp-checkout] sandbox_init_point:', JSON.stringify(pref.sandbox_init_point));
 
   // Guardar preference id en booking
   await supabase
