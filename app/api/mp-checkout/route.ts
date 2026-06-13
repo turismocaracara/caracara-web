@@ -57,11 +57,8 @@ async function handleCheckout(req: NextRequest, body: unknown) {
   }
 
   const instance   = booking.tour_instances as unknown as { tour_slug: string; date: string };
-  const client     = booking.clients       as unknown as { name: string; email: string };
   const tourSlug   = instance.tour_slug;
   const tourDate   = instance.date;
-  const clientName = client.name;
-  const clientEmail = client.email;
 
   // Obtener nombre del tour
   const { data: tour } = await supabase
@@ -129,16 +126,11 @@ async function handleCheckout(req: NextRequest, body: unknown) {
         unit_price:  pricePerPerson,
         currency_id: 'CLP',
       }],
-      payer: {
-        name:  clientName,
-        email: clientEmail,
-      },
       back_urls: {
         success: successUrl,
         failure: successUrl,
         pending: successUrl,
       },
-      auto_return:          'approved',
       notification_url:     `${baseUrl}/api/mp-webhook`,
       statement_descriptor: 'TURISMO CARACARA',
     },
