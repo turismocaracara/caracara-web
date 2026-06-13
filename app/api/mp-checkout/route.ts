@@ -107,15 +107,15 @@ async function handleCheckout(req: NextRequest, body: unknown) {
     .update({ price_per_person: pricePerPerson, total_amount: totalAmount })
     .eq('id', booking_id);
 
-  // Derivar baseUrl desde headers para evitar valores mal formateados en env vars
-  const envBase = process.env.NEXT_PUBLIC_BASE_URL?.replace(/\/+$/, '');
+  // Derivar baseUrl limpio desde env var (trim elimina tabs/newlines invisibles)
   const proto   = req.headers.get('x-forwarded-proto') ?? 'https';
   const host    = req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? 'turismocaracara.cl';
+  const envBase = process.env.NEXT_PUBLIC_BASE_URL?.trim().replace(/\/+$/, '');
   const baseUrl = envBase ?? `${proto}://${host}`;
   const locale  = booking.locale ?? 'es';
 
   const successUrl = `${baseUrl}/${locale}/reservas/${booking.booking_code}`;
-  console.log('[mp-checkout] back_url:', successUrl);
+  console.log('[mp-checkout] back_url (json):', JSON.stringify(successUrl));
 
   // Crear preferencia en MercadoPago
   const preference = new Preference(mp);
