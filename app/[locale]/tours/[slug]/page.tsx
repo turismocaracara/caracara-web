@@ -1,35 +1,39 @@
 import type { Metadata } from 'next';
-import { useTranslations } from 'next-intl';
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { Link } from '@/navigation';
-import { getTourBySlug, TOURS, type TourCategory } from '@/lib/tours';
+import { supabase } from '@/lib/supabase';
 import BookingForm from '@/components/BookingForm';
 
-export async function generateMetadata({ params: { locale, slug } }: { params: { locale: string; slug: string } }): Promise<Metadata> {
-  const tour = getTourBySlug(slug);
-  if (!tour) return {};
-  const t = await getTranslations({ locale, namespace: 'tourNames' });
-  const td = await getTranslations({ locale, namespace: 'tourDesc' });
-  const name = t(slug);
-  const desc = td(slug).slice(0, 155);
-  return {
-    title: `${name} — Turismo CaraCara`,
-    description: desc,
-    openGraph: { title: name, description: desc, type: 'website' },
-  };
+export const revalidate = 300;
+
+interface TourRow {
+  slug: string;
+  name_es: string; name_en: string | null; name_pt: string | null;
+  description_es: string | null; description_en: string | null; description_pt: string | null;
+  category: string | null;
+  difficulty: string | null;
+  hide_difficulty: boolean | null;
+  duration_hrs: number | null;
+  max_pax: number | null;
+  hide_pax: boolean | null;
+  highlights: string[];
+  includes_keys: string[];
+  excludes_keys: string[];
+  itinerary: { time: string; place: string; isLunch?: boolean }[];
+  wine_convenios: string[];
 }
 
-const CATEGORY_LABELS: Record<TourCategory, string> = {
-  cajon: 'Cajón del Maipo',
+const CATEGORY_LABELS: Record<string, string> = {
+  cajon:      'Cajón del Maipo',
   valparaiso: 'Valparaíso',
-  santiago: 'Santiago',
-  vinedos: 'Viñedos',
-  trekking: 'Trekking',
-  aventura: 'Aventura',
+  santiago:   'Santiago',
+  vinedos:    'Viñedos',
+  trekking:   'Trekking',
+  aventura:   'Aventura',
 };
 
-const DIFFICULTY_STYLES = {
+const DIFFICULTY_STYLES: Record<string, { dot: string; text: string }> = {
   low:    { dot: 'bg-green-400',  text: 'text-green-300' },
   medium: { dot: 'bg-yellow-400', text: 'text-yellow-300' },
   high:   { dot: 'bg-red-400',    text: 'text-red-300' },
@@ -39,21 +43,81 @@ function fmtCLP(n: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n);
 }
 
-export function generateStaticParams() {
-  return TOURS.map((t) => ({ slug: t.slug }));
+async function getTourFromDB(slug: string): Promise<TourRow | null> {
+  const { data } = await supabase
+    .from('tours')
+    .select(`
+      slug, name_es, name_en, name_pt,
+      description_es, description_en, description_pt,
+      category, difficulty, hide_difficulty,
+      duration_hrs, max_pax, hide_pax,
+      highlights, includes_keys, excludes_keys,
+      itinerary, wine_convenios, active
+    `)
+    .eq('slug', slug)
+    .eq('active', true)
+    .single();
+
+  return data as TourRow | null;
 }
 
-export default function TourDetailPage({ params }: { params: { slug: string; locale: string } }) {
-  const tour = getTourBySlug(params.slug);
+async function getPricingFromDB(slug: string) {
+  const [groupRes, privateRes] = await Promise.all([
+    supabase.from('group_pricing').select('price_per_person').eq('tour_slug', slug).maybeSingle(),
+    supabase.from('private_pricing').select('pax_min, pax_max, price_per_person').eq('tour_slug', slug).order('pax_min'),
+  ]);
+  return {
+    groupPrice:     groupRes.data?.price_per_person ?? undefined,
+    privatePricing: privateRes.data?.map(r => ({ paxMin: r.pax_min, paxMax: r.pax_max, price: r.price_per_person })) ?? undefined,
+  };
+}
+
+export async function generateMetadata(
+  { params: { locale, slug } }: { params: { locale: string; slug: string } }
+): Promise<Metadata> {
+  const tour = await getTourFromDB(slug);
+  if (!tour) return {};
+  const name = locale === 'en' ? (tour.name_en ?? tour.name_es)
+             : locale === 'pt' ? (tour.name_pt ?? tour.name_es)
+             : tour.name_es;
+  const desc = (locale === 'en' ? tour.description_en : locale === 'pt' ? tour.description_pt : tour.description_es) ?? '';
+  return {
+    title:       `${name} — Turismo CaraCara`,
+    description: desc.slice(0, 155),
+    openGraph:   { title: name, description: desc.slice(0, 155), type: 'website' },
+  };
+}
+
+export async function generateStaticParams() {
+  const { data } = await supabase.from('tours').select('slug').eq('active', true);
+  return (data ?? []).map(t => ({ slug: t.slug }));
+}
+
+export default async function TourDetailPage(
+  { params }: { params: { slug: string; locale: string } }
+) {
+  const { slug, locale } = params;
+  const [tour, pricing, t] = await Promise.all([
+    getTourFromDB(slug),
+    getPricingFromDB(slug),
+    getTranslations({ locale }),
+  ]);
+
   if (!tour) notFound();
 
-  const t = useTranslations();
-  const tourName = t(`tourNames.${tour.slug}`);
-  const description = t(`tourDesc.${tour.slug}`);
+  const tourName = locale === 'en' ? (tour.name_en ?? tour.name_es)
+                 : locale === 'pt' ? (tour.name_pt ?? tour.name_es)
+                 : tour.name_es;
 
-  // Minimum price to show in header
-  const minPrice = tour.groupPrice
-    ?? tour.privatePricing?.reduce((min, tier) => Math.min(min, tier.price), Infinity)
+  const description = locale === 'en' ? (tour.description_en ?? tour.description_es ?? '')
+                    : locale === 'pt' ? (tour.description_pt ?? tour.description_es ?? '')
+                    : (tour.description_es ?? '');
+
+  const difficulty  = tour.difficulty ?? 'medium';
+  const diffStyle   = DIFFICULTY_STYLES[difficulty] ?? DIFFICULTY_STYLES.medium;
+
+  const minPrice = pricing.groupPrice
+    ?? pricing.privatePricing?.reduce((min, tier) => Math.min(min, tier.price), Infinity)
     ?? null;
 
   return (
@@ -68,13 +132,15 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
             ← {t('common.cta.back')}
           </Link>
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-semibold bg-orange/20 text-orange-light border border-orange/30 px-3 py-1 rounded-full">
-              {CATEGORY_LABELS[tour.category]}
-            </span>
-            {!tour.hideDifficulty && (
-              <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full bg-white/10 ${DIFFICULTY_STYLES[tour.difficulty].text}`}>
-                <span className={`w-2 h-2 rounded-full ${DIFFICULTY_STYLES[tour.difficulty].dot}`} />
-                {t(`common.difficulty.${tour.difficulty}`)}
+            {tour.category && (
+              <span className="text-xs font-semibold bg-orange/20 text-orange-light border border-orange/30 px-3 py-1 rounded-full">
+                {CATEGORY_LABELS[tour.category] ?? tour.category}
+              </span>
+            )}
+            {!tour.hide_difficulty && (
+              <span className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1 rounded-full bg-white/10 ${diffStyle.text}`}>
+                <span className={`w-2 h-2 rounded-full ${diffStyle.dot}`} />
+                {t(`common.difficulty.${difficulty}`)}
               </span>
             )}
             <span className="text-xs font-medium bg-white/10 text-white/80 px-3 py-1 rounded-full">
@@ -85,18 +151,20 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
             {tourName}
           </h1>
           <div className="flex flex-wrap gap-6 text-white/70 text-sm">
-            <span className="flex items-center gap-1.5">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              {t('common.duration')}: {tour.durationHours}h
-            </span>
-            {!tour.hidePax && (
+            {tour.duration_hrs && (
+              <span className="flex items-center gap-1.5">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {t('common.duration')}: {tour.duration_hrs}h
+              </span>
+            )}
+            {!tour.hide_pax && tour.max_pax && (
               <span className="flex items-center gap-1.5">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                {t('common.maxPax', { n: tour.maxPax })}
+                {t('common.maxPax', { n: tour.max_pax })}
               </span>
             )}
             {minPrice !== null && minPrice !== Infinity ? (
@@ -104,9 +172,7 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
                 {t('common.from')} {fmtCLP(minPrice)} {t('common.price.perPerson')}
               </span>
             ) : (
-              <span className="text-orange font-medium">
-                {tour.price ? `${fmtCLP(tour.price)} CLP` : t('common.price.consult')}
-              </span>
+              <span className="text-orange font-medium">{t('common.price.consult')}</span>
             )}
           </div>
         </div>
@@ -139,40 +205,32 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
           <div className="lg:col-span-2 flex flex-col gap-8">
 
             {/* Description */}
-            <div>
-              <p className="text-gray-700 text-lg leading-relaxed font-display italic">
-                {description}
-              </p>
-            </div>
+            {description && (
+              <div>
+                <p className="text-gray-700 text-lg leading-relaxed font-display italic">
+                  {description}
+                </p>
+              </div>
+            )}
 
             {/* Itinerary */}
             {tour.itinerary && tour.itinerary.length > 0 && (
               <div>
                 <h2 className="font-semibold text-ink text-lg mb-5">{t('common.itinerary')}</h2>
                 <div className="relative pl-2">
-                  {/* Vertical connector line */}
                   <div className="absolute left-[67px] top-5 bottom-5 w-px bg-gray-200" aria-hidden="true" />
                   <div className="flex flex-col gap-3">
                     {tour.itinerary.map((stop, i) => (
                       <div key={i} className="flex items-center gap-4">
-                        {/* Time */}
                         <span className="w-12 text-right text-xs font-mono font-semibold text-gray-400 flex-shrink-0">
                           {stop.time}
                         </span>
-                        {/* Dot */}
                         <div className="relative z-10 flex-shrink-0">
-                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center bg-white ${
-                            stop.isLunch ? 'border-orange' : 'border-teal'
-                          }`}>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center bg-white ${stop.isLunch ? 'border-orange' : 'border-teal'}`}>
                             <div className={`w-2 h-2 rounded-full ${stop.isLunch ? 'bg-orange' : 'bg-teal'}`} />
                           </div>
                         </div>
-                        {/* Card */}
-                        <div className={`flex-1 rounded-xl px-4 py-2.5 flex items-center justify-between ${
-                          stop.isLunch
-                            ? 'bg-orange/5 border border-orange/20'
-                            : 'bg-white border border-gray-100'
-                        }`}>
+                        <div className={`flex-1 rounded-xl px-4 py-2.5 flex items-center justify-between ${stop.isLunch ? 'bg-orange/5 border border-orange/20' : 'bg-white border border-gray-100'}`}>
                           <p className={`text-sm font-medium ${stop.isLunch ? 'text-orange-700' : 'text-gray-800'}`}>
                             {stop.place}
                           </p>
@@ -190,9 +248,9 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
             )}
 
             {/* Includes / Excludes */}
-            {((tour.includesKeys && tour.includesKeys.length > 0) || (tour.excludesKeys && tour.excludesKeys.length > 0)) && (
+            {((tour.includes_keys?.length > 0) || (tour.excludes_keys?.length > 0)) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {tour.includesKeys && tour.includesKeys.length > 0 && (
+                {tour.includes_keys?.length > 0 && (
                   <div className="bg-green-50 border border-green-100 rounded-xl p-5">
                     <h3 className="text-sm font-semibold text-green-800 mb-3 flex items-center gap-2">
                       <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -201,7 +259,7 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
                       {t('common.includes')}
                     </h3>
                     <ul className="flex flex-col gap-2">
-                      {tour.includesKeys.map(key => (
+                      {tour.includes_keys.map(key => (
                         <li key={key} className="flex items-start gap-2 text-sm text-green-700">
                           <svg className="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
@@ -212,7 +270,7 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
                     </ul>
                   </div>
                 )}
-                {tour.excludesKeys && tour.excludesKeys.length > 0 && (
+                {tour.excludes_keys?.length > 0 && (
                   <div className="bg-gray-50 border border-gray-100 rounded-xl p-5">
                     <h3 className="text-sm font-semibold text-gray-600 mb-3 flex items-center gap-2">
                       <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -221,7 +279,7 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
                       {t('common.tourExcludes')}
                     </h3>
                     <ul className="flex flex-col gap-2">
-                      {tour.excludesKeys.map(key => (
+                      {tour.excludes_keys.map(key => (
                         <li key={key} className="flex items-start gap-2 text-sm text-gray-500">
                           <svg className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
@@ -236,24 +294,26 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
             )}
 
             {/* Highlights */}
-            <div>
-              <h2 className="font-semibold text-ink text-lg mb-4">{t('common.highlights')}</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {tour.highlights.map((h) => (
-                  <div key={h} className="flex items-center gap-2 bg-white rounded-xl px-4 py-3 text-sm text-gray-700">
-                    <span className="w-2 h-2 bg-orange rounded-full flex-shrink-0" />
-                    {t(`highlights.${h}`)}
-                  </div>
-                ))}
+            {tour.highlights?.length > 0 && (
+              <div>
+                <h2 className="font-semibold text-ink text-lg mb-4">{t('common.highlights')}</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {tour.highlights.map(h => (
+                    <div key={h} className="flex items-center gap-2 bg-white rounded-xl px-4 py-3 text-sm text-gray-700">
+                      <span className="w-2 h-2 bg-orange rounded-full flex-shrink-0" />
+                      {t(`highlights.${h}`)}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Wineries */}
-            {tour.wineConvenios && tour.wineConvenios.length > 0 && (
+            {tour.wine_convenios?.length > 0 && (
               <div>
                 <h2 className="font-semibold text-ink text-lg mb-4">{t('common.wineries')}</h2>
                 <div className="flex flex-wrap gap-2">
-                  {tour.wineConvenios.map((w) => (
+                  {tour.wine_convenios.map(w => (
                     <span key={w} className="bg-red-50 text-red-700 border border-red-100 text-sm px-3 py-1 rounded-full">
                       {w}
                     </span>
@@ -267,25 +327,25 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
           <div className="flex flex-col gap-4">
 
             {/* Pricing card */}
-            {(tour.groupPrice !== undefined || tour.privatePricing) && (
+            {(pricing.groupPrice !== undefined || pricing.privatePricing) && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
                   {t('common.prices')}
                 </h2>
-                {tour.groupPrice !== undefined && (
-                  <div className={`${tour.privatePricing ? 'mb-4 pb-4 border-b border-gray-100' : ''}`}>
+                {pricing.groupPrice !== undefined && (
+                  <div className={`${pricing.privatePricing ? 'mb-4 pb-4 border-b border-gray-100' : ''}`}>
                     <p className="text-xs text-gray-400 mb-1">{t('common.group')}</p>
                     <p className="text-2xl font-bold text-ink">
-                      {fmtCLP(tour.groupPrice)}
+                      {fmtCLP(pricing.groupPrice)}
                       <span className="text-sm font-normal text-gray-400 ml-1">{t('common.price.perPerson')}</span>
                     </p>
                   </div>
                 )}
-                {tour.privatePricing && (
+                {pricing.privatePricing && (
                   <div>
                     <p className="text-xs text-gray-400 mb-3">{t('common.private')}</p>
                     <div className="flex flex-col gap-2">
-                      {tour.privatePricing.map((tier) => (
+                      {pricing.privatePricing.map(tier => (
                         <div key={tier.paxMin} className="flex items-center justify-between py-1">
                           <span className="text-sm text-gray-600">
                             {tier.paxMin}–{tier.paxMax} {t('common.people')}
@@ -311,8 +371,8 @@ export default function TourDetailPage({ params }: { params: { slug: string; loc
               <BookingForm
                 tourName={tourName}
                 tourSlug={tour.slug}
-                groupPrice={tour.groupPrice}
-                privatePricing={tour.privatePricing}
+                groupPrice={pricing.groupPrice}
+                privatePricing={pricing.privatePricing}
               />
             </div>
           </div>
