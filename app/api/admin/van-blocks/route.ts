@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 
-async function getAuthUser() {
-  const authClient = createSupabaseServerClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  return user;
-}
-
 export async function POST(req: NextRequest) {
-  const user = await getAuthUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const member = await getCurrentTeamMember();
+  if (!hasPermission(member, 'manage_vans')) {
+    return NextResponse.json({ error: 'No tienes permiso para gestionar vans' }, { status: 403 });
+  }
 
   const body = await req.json() as { van_id: string; date: string; reason?: string };
   if (!body.van_id || !body.date) {
@@ -28,8 +24,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const user = await getAuthUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const member = await getCurrentTeamMember();
+  if (!hasPermission(member, 'manage_vans')) {
+    return NextResponse.json({ error: 'No tienes permiso para gestionar vans' }, { status: 403 });
+  }
 
   const { id } = await req.json() as { id: string };
   if (!id) return NextResponse.json({ error: 'id requerido' }, { status: 400 });

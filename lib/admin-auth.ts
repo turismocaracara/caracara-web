@@ -2,10 +2,20 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from './supabase-server';
 import { supabase } from './supabase';
 
+/**
+ * Exige sesión de Supabase Auth Y que esa persona sea un team_member activo.
+ * Una cuenta de Auth sin fila en team_members (huérfana, o creada fuera del
+ * flujo de invite) no debe poder ver ninguna pantalla del panel — ahí hay
+ * datos reales de clientes (nombre, email, teléfono, ingresos).
+ */
 export async function requireAdmin() {
   const client = createSupabaseServerClient();
   const { data: { user } } = await client.auth.getUser();
   if (!user) redirect('/admin/login');
+
+  const member = await getCurrentTeamMember();
+  if (!member) redirect('/admin/login');
+
   return user;
 }
 

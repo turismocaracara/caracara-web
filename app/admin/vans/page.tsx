@@ -1,10 +1,13 @@
-import { requireAdmin } from '@/lib/admin-auth';
+import { redirect } from 'next/navigation';
+import { requireAdmin, getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import VansManager, { type VanRow, type VanBlockRow } from '@/components/admin/VansManager';
 
 export default async function VansPage() {
-  const user = await requireAdmin();
+  const user   = await requireAdmin();
+  const member = await getCurrentTeamMember();
+  if (!hasPermission(member, 'manage_vans')) redirect('/admin');
 
   const today = new Date().toISOString().slice(0, 10);
 

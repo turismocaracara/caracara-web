@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { slug: string } }
 ) {
-  const authClient = createSupabaseServerClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const member = await getCurrentTeamMember();
+  if (member?.role !== 'admin') {
+    return NextResponse.json({ error: 'Solo un admin puede editar tours' }, { status: 403 });
+  }
 
   const body = await req.json() as { active?: boolean };
   if (typeof body.active !== 'boolean') {

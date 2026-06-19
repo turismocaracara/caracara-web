@@ -1,10 +1,13 @@
-import { requireAdmin } from '@/lib/admin-auth';
+import { redirect } from 'next/navigation';
+import { requireAdmin, getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import EquipoManager, { type TeamMemberRow } from '@/components/admin/EquipoManager';
 
 export default async function EquipoPage() {
-  const user = await requireAdmin();
+  const user   = await requireAdmin();
+  const member = await getCurrentTeamMember();
+  if (!hasPermission(member, 'manage_team')) redirect('/admin');
 
   const { data, error } = await supabase
     .from('team_members')

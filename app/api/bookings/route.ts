@@ -5,7 +5,7 @@ import { Resend } from 'resend';
 import { render } from '@react-email/render';
 import { BookingConfirmedEmail } from '@/emails/BookingConfirmed';
 import { NewBookingAdminEmail } from '@/emails/NewBookingAdmin';
-import { resolveTourInstance, generateBookingCode, generateCancellationToken, getPaymentHoldMinutes } from '@/lib/booking-engine';
+import { resolveTourInstance, generateBookingCode, generateCancellationToken, getPaymentHoldMinutes, isDateBookable } from '@/lib/booking-engine';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -64,6 +64,13 @@ export async function POST(req: NextRequest) {
   const tourDate = new Date(data.tour_date + 'T00:00:00');
   if (tourDate < today) {
     return NextResponse.json({ error: 'Tour date is in the past' }, { status: 422 });
+  }
+
+  // Validar feriados, fechas bloqueadas, meses no disponibles y cutoff —
+  // las mismas reglas que ya se muestran en el calendario público
+  const bookable = await isDateBookable(data.tour_slug, data.tour_date, true);
+  if (!bookable.ok) {
+    return NextResponse.json({ error: bookable.reason }, { status: 422 });
   }
 
   // Upsert cliente (buscar por email, crear si no existe)

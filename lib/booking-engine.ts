@@ -1,5 +1,93 @@
 import { supabase } from './supabase';
 
+function nowInSantiago(): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find(p => p.type === type)?.value ?? '0';
+  return new Date(
+    Number(get('year')), Number(get('month')) - 1, Number(get('day')),
+    Number(get('hour')), Number(get('minute'))
+  );
+}
+
+type BookableResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Replica en el backend las mismas reglas de bloqueo que ya se usan para pintar
+ * el calendario público (GET /api/availability): feriados recurrentes, fechas
+ * bloqueadas específicas y meses en que el tour no opera. Sin esto, una request
+ * directa (o un calendario con caché vieja) podía crear una reserva para un día
+ * cerrado. enforceCutoff se desactiva para reservas manuales (el admin ya
+ * coordinó la reserva fuera del plazo normal de corte).
+ */
+export async function isDateBookable(
+  tourSlug: string,
+  dateStr: string,
+  enforceCutoff = true
+): Promise<BookableResult> {
+  const { data: tour } = await supabase
+    .from('tours')
+    .select('available_months, booking_cutoff_time')
+    .eq('slug', tourSlug)
+    .single();
+
+  if (!tour) return { ok: false, reason: 'Tour no encontrado' };
+
+  const d = new Date(dateStr + 'T00:00:00');
+  const month = d.getMonth() + 1;
+  const day   = d.getDate();
+
+  const availableMonths: number[] = tour.available_months ?? [1,2,3,4,5,6,7,8,9,10,11,12];
+  if (!availableMonths.includes(month)) {
+    return { ok: false, reason: 'El tour no opera en ese mes' };
+  }
+
+  const [blackoutsRes, tourBlackoutsRes] = await Promise.all([
+    supabase
+      .from('recurring_blackouts')
+      .select('month, day')
+      .eq('active', true)
+      .or(`tour_slug.is.null,tour_slug.eq.${tourSlug}`),
+    supabase
+      .from('tour_blackout_dates')
+      .select('date')
+      .or(`tour_slug.is.null,tour_slug.eq.${tourSlug}`)
+      .eq('date', dateStr),
+  ]);
+
+  if ((blackoutsRes.data ?? []).some(b => b.month === month && b.day === day)) {
+    return { ok: false, reason: 'Fecha bloqueada (feriado)' };
+  }
+  if ((tourBlackoutsRes.data ?? []).length > 0) {
+    return { ok: false, reason: 'Fecha bloqueada' };
+  }
+
+  if (enforceCutoff) {
+    const now = nowInSantiago();
+    const todayStr    = now.toISOString().slice(0, 10);
+    const tomorrow     = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+
+    if (dateStr === todayStr) {
+      return { ok: false, reason: 'No se aceptan reservas para el mismo día' };
+    }
+
+    if (dateStr === tomorrowStr) {
+      const [cutoffH, cutoffM] = (tour.booking_cutoff_time ?? '20:00').split(':').map(Number);
+      const pastCutoff = now.getHours() > cutoffH || (now.getHours() === cutoffH && now.getMinutes() >= cutoffM);
+      if (pastCutoff) {
+        return { ok: false, reason: 'Ya pasó la hora límite para reservar esta fecha' };
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
 export async function getAvailableVans(date: string): Promise<number> {
   const [instancesRes, vansRes, blocksRes] = await Promise.all([
     supabase

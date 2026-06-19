@@ -1,20 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const authClient = createSupabaseServerClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const member = await getCurrentTeamMember();
+  if (!hasPermission(member, 'manage_team')) {
+    return NextResponse.json({ error: 'No tienes permiso para gestionar el equipo' }, { status: 403 });
+  }
 
   const body = await req.json() as {
     role?:        string;
     permissions?: Record<string, boolean>;
     active?:      boolean;
   };
+
+  // Solo un admin puede otorgar el rol admin a otra persona (evita que un
+  // admin_secondary con permiso manage_team se auto-promueva)
+  if (body.role === 'admin' && member?.role !== 'admin') {
+    return NextResponse.json({ error: 'Solo un admin puede asignar el rol admin' }, { status: 403 });
+  }
 
   const update: Record<string, unknown> = {};
   if (body.role        !== undefined) update.role        = body.role;
@@ -35,12 +42,13 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const authClient = createSupabaseServerClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const member = await getCurrentTeamMember();
+  if (!hasPermission(member, 'manage_team')) {
+    return NextResponse.json({ error: 'No tienes permiso para gestionar el equipo' }, { status: 403 });
+  }
 
   const { error } = await supabase
     .from('team_members')

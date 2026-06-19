@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/supabase-server';
+import { getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 
 const VALID_ROLES = ['admin', 'admin_secondary', 'guide'] as const;
 type Role = typeof VALID_ROLES[number];
 
 export async function POST(req: NextRequest) {
-  const authClient = createSupabaseServerClient();
-  const { data: { user } } = await authClient.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const member = await getCurrentTeamMember();
+  if (!hasPermission(member, 'manage_team')) {
+    return NextResponse.json({ error: 'No tienes permiso para gestionar el equipo' }, { status: 403 });
+  }
 
   const body = await req.json() as {
     email: string;

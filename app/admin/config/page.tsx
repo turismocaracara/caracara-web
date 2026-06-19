@@ -1,10 +1,13 @@
-import { requireAdmin } from '@/lib/admin-auth';
+import { redirect } from 'next/navigation';
+import { requireAdmin, getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import ConfigManager, { type ConfigRow } from '@/components/admin/ConfigManager';
 
 export default async function ConfigPage() {
-  const user = await requireAdmin();
+  const user   = await requireAdmin();
+  const member = await getCurrentTeamMember();
+  if (member?.role !== 'admin') redirect('/admin');
 
   const { data, error } = await supabase
     .from('config')

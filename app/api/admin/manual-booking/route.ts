@@ -5,7 +5,7 @@ import { Resend } from 'resend';
 import { render } from '@react-email/render';
 import { BookingConfirmedEmail } from '@/emails/BookingConfirmed';
 import { getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
-import { resolveTourInstance, generateBookingCode, generateCancellationToken } from '@/lib/booking-engine';
+import { resolveTourInstance, generateBookingCode, generateCancellationToken, isDateBookable } from '@/lib/booking-engine';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -67,6 +67,13 @@ export async function POST(req: NextRequest) {
   const tourDate = new Date(data.tour_date + 'T00:00:00');
   if (tourDate < today) {
     return NextResponse.json({ error: 'La fecha del tour ya pasó' }, { status: 422 });
+  }
+
+  // Feriados / fechas bloqueadas / meses no disponibles igual que el flujo público —
+  // sin cutoff de horario, porque el admin coordina manualmente fuera de ese plazo
+  const bookable = await isDateBookable(data.tour_slug, data.tour_date, false);
+  if (!bookable.ok) {
+    return NextResponse.json({ error: bookable.reason }, { status: 422 });
   }
 
   // Upsert cliente

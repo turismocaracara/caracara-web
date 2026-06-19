@@ -1,10 +1,13 @@
-import { requireAdmin } from '@/lib/admin-auth';
+import { redirect } from 'next/navigation';
+import { requireAdmin, getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import ToursTable, { type AdminTourRow } from '@/components/admin/ToursTable';
 
 export default async function ToursPage() {
-  const user = await requireAdmin();
+  const user   = await requireAdmin();
+  const member = await getCurrentTeamMember();
+  if (member?.role !== 'admin') redirect('/admin');
 
   const { data, error } = await supabase
     .from('tours')
