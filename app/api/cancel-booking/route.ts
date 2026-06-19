@@ -3,6 +3,7 @@ import { Resend } from 'resend';
 import { supabase } from '@/lib/supabase';
 import { releaseInstanceCapacity } from '@/lib/booking-engine';
 import { getRefundPercent, daysBeforeTour } from '@/lib/cancellation';
+import { escapeHtml } from '@/lib/html';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
       html: `
         <h2>Un cliente solicitó cancelar su reserva</h2>
         <p><strong>Código:</strong> ${booking.booking_code}</p>
-        <p><strong>Cliente:</strong> ${client?.name ?? '—'} (${client?.email ?? '—'})</p>
+        <p><strong>Cliente:</strong> ${escapeHtml(client?.name ?? '—')} (${escapeHtml(client?.email ?? '—')})</p>
         <p><strong>Días antes del tour:</strong> ${daysBefore}</p>
         <p><strong>Monto pagado:</strong> $${totalAmount.toLocaleString('es-CL')}</p>
         <p><strong>Devolución según política (${refundPercent}%):</strong> $${refundAmount.toLocaleString('es-CL')}</p>

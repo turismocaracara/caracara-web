@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
+import { escapeHtml } from '@/lib/html';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
           to:      client.email,
           subject: `Devolución aprobada — ${booking.booking_code}`,
           html: `
-            <p>Hola ${client.name ?? ''},</p>
+            <p>Hola ${escapeHtml(client.name ?? '')},</p>
             <p>Tu devolución de <strong>$${(booking.refund_amount ?? 0).toLocaleString('es-CL')}</strong> para la reserva ${booking.booking_code} fue aprobada.</p>
             <p>Será procesada por MercadoPago en los próximos días hábiles.</p>
             <p>Turismo CaraCara</p>
