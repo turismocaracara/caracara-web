@@ -10,7 +10,13 @@ const mp = new MercadoPagoConfig({
 
 function verifySignature(req: NextRequest, _rawBody: string): boolean {
   const secret = process.env.MP_WEBHOOK_SECRET;
-  if (!secret) return true; // sin secret configurado, saltar verificación (solo en dev)
+  if (!secret) {
+    // Sin secret configurado se salta la verificación de firma — el riesgo real es bajo
+    // (igual se valida contra la cuenta real de MP), pero esto NO debería pasar en
+    // producción. Lo dejamos como warning visible en los logs de Vercel.
+    console.warn('[mp-webhook] MP_WEBHOOK_SECRET no está configurado — la verificación de firma está desactivada');
+    return true;
+  }
 
   const xSignature  = req.headers.get('x-signature') ?? '';
   const xRequestId  = req.headers.get('x-request-id') ?? '';

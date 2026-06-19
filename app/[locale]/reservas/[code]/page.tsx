@@ -103,8 +103,28 @@ export default async function ReservaPage({ params, searchParams }: Props) {
 
   const tourName = locale === 'en' ? tour?.name_en : locale === 'pt' ? tour?.name_pt : tour?.name_es;
 
-  // ─── Flujo de cancelación (link del email con ?token=) ───
-  if (searchParams.token) {
+  // El código de reserva es secuencial (CC-2026-0041) y por lo tanto adivinable —
+  // sin verificar el token, cualquiera podría enumerar códigos y ver tour/fecha/pax
+  // de reservas ajenas. Se exige el mismo token tanto para cancelar como para ver
+  // el estado del pago (MercadoPago lo recibe en su URL de retorno).
+  const tokenValid = Boolean(searchParams.token) && booking.cancellation_token === searchParams.token;
+
+  if (!tokenValid) {
+    return (
+      <main className="min-h-screen bg-sand flex items-center justify-center px-4 py-16">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+          <p className="text-ink font-semibold">
+            {locale === 'en' ? 'We could not verify this booking. Check your confirmation email for the correct link.'
+              : locale === 'pt' ? 'Não foi possível verificar esta reserva. Confira o link no seu email de confirmação.'
+              : 'No pudimos verificar esta reserva. Revisa el link en tu email de confirmación.'}
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  // ─── Flujo de cancelación (link del email con ?token=, sin status de pago) ───
+  if (!searchParams.status && !searchParams.collection_status) {
     const tourDateFmt = fmtDate(tourDate, locale);
 
     if (booking.status === 'cancelled') {
@@ -121,20 +141,6 @@ export default async function ReservaPage({ params, searchParams }: Props) {
       );
     }
 
-    if (booking.cancellation_token !== searchParams.token) {
-      return (
-        <main className="min-h-screen bg-sand flex items-center justify-center px-4 py-16">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
-            <p className="text-ink font-semibold">
-              {locale === 'en' ? 'Invalid or expired link.'
-                : locale === 'pt' ? 'Link inválido ou expirado.'
-                : 'Enlace inválido o vencido.'}
-            </p>
-          </div>
-        </main>
-      );
-    }
-
     const daysBefore    = daysBeforeTour(tourDate);
     const refundPercent = await getRefundPercent(tourSlug, daysBefore);
     const totalAmount   = booking.total_amount ?? 0;
@@ -143,7 +149,7 @@ export default async function ReservaPage({ params, searchParams }: Props) {
     return (
       <CancelBookingPanel
         bookingCode={booking.booking_code}
-        token={searchParams.token}
+        token={searchParams.token!}
         tourName={tourName ?? tourSlug}
         tourDateFmt={tourDateFmt}
         refundPercent={refundPercent}

@@ -41,7 +41,7 @@ async function handleCheckout(req: NextRequest, body: unknown) {
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .select(`
-      id, booking_code, booking_type, pax, locale, status, client_id,
+      id, booking_code, booking_type, pax, locale, status, client_id, mp_preference_id, cancellation_token,
       tour_instances!inner ( tour_slug, date ),
       clients!inner ( name, email )
     `)
@@ -54,6 +54,22 @@ async function handleCheckout(req: NextRequest, body: unknown) {
 
   if (booking.status !== 'pending_payment' && booking.status !== 'waiting_min') {
     return NextResponse.json({ error: 'Esta reserva ya fue procesada' }, { status: 409 });
+  }
+
+  // Idempotencia: si ya existe una preferencia para esta reserva (doble clic, reintento),
+  // reutilizarla en vez de crear una nueva y duplicar el cobro pendiente en MercadoPago.
+  if (booking.mp_preference_id) {
+    try {
+      const existing = await new Preference(mp).get({ preferenceId: booking.mp_preference_id });
+      return NextResponse.json({
+        preference_id:      existing.id,
+        init_point:         existing.init_point,
+        sandbox_init_point: existing.sandbox_init_point,
+      });
+    } catch (e) {
+      console.warn('[mp-checkout] no se pudo recuperar preferencia existente, se creará una nueva:', e);
+      // si falla la recuperación, continuar y crear una nueva preferencia
+    }
   }
 
   const instance   = booking.tour_instances as unknown as { tour_slug: string; date: string };
@@ -131,7 +147,10 @@ async function handleCheckout(req: NextRequest, body: unknown) {
   const baseUrl = envBase ?? `${proto}://${host}`;
   const locale  = booking.locale ?? 'es';
 
-  const successUrl = `${baseUrl}/${locale}/reservas/${booking.booking_code}`;
+  // El token va en la URL de retorno para que la página de estado pueda verificar que
+  // quien la ve es el mismo cliente — sin esto, el código de reserva (secuencial) sería
+  // adivinable y cualquiera podría ver tour/fecha/pax de otra persona.
+  const successUrl = `${baseUrl}/${locale}/reservas/${booking.booking_code}?token=${booking.cancellation_token}`;
   console.log('[mp-checkout] back_url (json):', JSON.stringify(successUrl));
 
   // Crédito cubre el 100% → confirmar directo, sin pasar por MercadoPago
@@ -148,7 +167,7 @@ async function handleCheckout(req: NextRequest, body: unknown) {
 
     return NextResponse.json({
       fully_paid:   true,
-      redirect_url: `${successUrl}?status=approved`,
+      redirect_url: `${successUrl}&status=approved`,
     });
   }
 
