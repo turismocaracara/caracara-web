@@ -109,37 +109,53 @@ export async function distributeGroups(
   for (let i = 0; i < groups.length; i++) {
     const targetInstId = vanToInstance[assignment[i]];
     if (targetInstId && groups[i].tour_instance_id !== targetInstId) {
-      await supabase
+      const { error: moveError } = await supabase
         .from('bookings')
         .update({ tour_instance_id: targetInstId })
         .eq('id', groups[i].id);
+      if (moveError) {
+        console.error(`[redistrib] ${tourSlug} ${tourDate}: error moviendo booking ${groups[i].id}:`, moveError.message);
+        return { success: false, totalPax, vans: numVans, error: 'error_sistema' };
+      }
     }
   }
 
   // 7. Actualizar current_pax y confirmar instancias activas
   for (let v = 0; v < numVans; v++) {
     if (vanPax[v] > 0) {
-      await supabase
+      const { error: confirmInstError } = await supabase
         .from('tour_instances')
         .update({ current_pax: vanPax[v], status: 'confirmed' })
         .eq('id', vanToInstance[v]);
+      if (confirmInstError) {
+        console.error(`[redistrib] ${tourSlug} ${tourDate}: error confirmando instancia ${vanToInstance[v]}:`, confirmInstError.message);
+        return { success: false, totalPax, vans: numVans, error: 'error_sistema' };
+      }
     }
   }
 
-  // 8. Cancelar instancias que quedaron vacías tras la redistribución
+  // 8. Cancelar instancias que quedaron vacías tras la redistribución (no crítico: no abortamos si falla)
   for (let v = numVans; v < instances.length; v++) {
-    await supabase
+    const { error: cancelError } = await supabase
       .from('tour_instances')
       .update({ status: 'cancelled' })
       .eq('id', instances[v].id);
+    if (cancelError) {
+      console.error(`[redistrib] ${tourSlug} ${tourDate}: error cancelando instancia vacía ${instances[v].id}:`, cancelError.message);
+    }
   }
 
   // 9. Actualizar bookings a 'confirmed'
-  await supabase
+  const { error: confirmBookingsError } = await supabase
     .from('bookings')
     .update({ status: 'confirmed' })
     .in('tour_instance_id', instanceIds)
     .not('status', 'in', '("cancelled","refunded")');
+
+  if (confirmBookingsError) {
+    console.error(`[redistrib] ${tourSlug} ${tourDate}: error confirmando bookings:`, confirmBookingsError.message);
+    return { success: false, totalPax, vans: numVans, error: 'error_sistema' };
+  }
 
   const usedVans = vanPax.filter(p => p > 0).length;
   console.log(`[redistrib] ${tourSlug} ${tourDate}: ${totalPax} pax → ${usedVans} van(s), dist: [${vanPax.join(', ')}]`);
