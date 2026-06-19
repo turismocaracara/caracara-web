@@ -1,0 +1,188 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { supabase } from '@/lib/supabase';
+import { Resend } from 'resend';
+import { render } from '@react-email/render';
+import { BookingConfirmedEmail } from '@/emails/BookingConfirmed';
+import { getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
+import { resolveTourInstance, generateBookingCode, generateCancellationToken } from '@/lib/booking-engine';
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const PassengerSchema = z.object({
+  name:      z.string().min(2).max(120),
+  id_type:   z.enum(['rut', 'passport']),
+  id_number: z.string().min(3).max(30),
+  email:     z.string().email(),
+  phone:     z.string().min(6).max(25),
+  country:   z.string().min(2).max(60),
+  is_lead:   z.boolean().default(false),
+});
+
+const ManualBookingSchema = z.object({
+  tour_slug:    z.string().min(3).max(80),
+  tour_date:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  booking_type: z.enum(['private', 'group']),
+  pax:          z.number().int().min(1).max(18),
+  passengers:   z.array(PassengerSchema).min(1).max(18),
+  locale:       z.enum(['es', 'en', 'pt']).default('es'),
+  notes:        z.string().max(500).optional(),
+  total_amount: z.number().int().min(0).optional(),
+});
+
+export async function POST(req: NextRequest) {
+  const member = await getCurrentTeamMember();
+  if (!hasPermission(member, 'manual_booking')) {
+    return NextResponse.json({ error: 'No tienes permiso para crear reservas manuales' }, { status: 403 });
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  const parsed = ManualBookingSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Validation error', details: parsed.error.flatten() }, { status: 422 });
+  }
+
+  const data = parsed.data;
+  const lead = data.passengers.find(p => p.is_lead) ?? data.passengers[0];
+
+  const { data: tour, error: tourError } = await supabase
+    .from('tours')
+    .select('slug, name_es, name_en, name_pt, active')
+    .eq('slug', data.tour_slug)
+    .eq('active', true)
+    .single();
+
+  if (tourError || !tour) {
+    return NextResponse.json({ error: 'Tour no encontrado o inactivo' }, { status: 404 });
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tourDate = new Date(data.tour_date + 'T00:00:00');
+  if (tourDate < today) {
+    return NextResponse.json({ error: 'La fecha del tour ya pasó' }, { status: 422 });
+  }
+
+  // Upsert cliente
+  const { data: existingClient } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('email', lead.email.toLowerCase())
+    .maybeSingle();
+
+  let clientId: string;
+  if (existingClient) {
+    clientId = existingClient.id;
+  } else {
+    const { data: newClient, error: clientError } = await supabase
+      .from('clients')
+      .insert({
+        name:      lead.name,
+        email:     lead.email.toLowerCase(),
+        phone:     lead.phone,
+        country:   lead.country,
+        id_type:   lead.id_type,
+        id_number: lead.id_number,
+        locale:    data.locale,
+      })
+      .select('id')
+      .single();
+
+    if (clientError || !newClient) {
+      console.error('[manual-booking] Client insert error:', clientError);
+      return NextResponse.json({ error: 'Error al crear el cliente' }, { status: 500 });
+    }
+    clientId = newClient.id;
+  }
+
+  // Verificar disponibilidad real — sin excepción, ni siquiera para reservas manuales
+  const instanceResult = await resolveTourInstance(data.tour_slug, data.tour_date, data.booking_type, data.pax);
+  if (instanceResult.error) {
+    return NextResponse.json({ error: instanceResult.error }, { status: 409 });
+  }
+  const instanceId = instanceResult.instanceId;
+
+  const { data: seqResult } = await supabase.rpc('get_next_booking_seq');
+  const year = new Date().getFullYear();
+  const seq = typeof seqResult === 'number' ? seqResult : Math.floor(Math.random() * 9000) + 1000;
+  const bookingCode = generateBookingCode(year, seq);
+  const cancellationToken = generateCancellationToken();
+
+  // Privado: se asume coordinado/pagado fuera del sistema → confirmado directo.
+  // Grupal: igual que online — espera el mínimo, lo decide el cron de las 20:00.
+  const status = data.booking_type === 'private' ? 'confirmed' : 'waiting_min';
+
+  const { data: booking, error: bookingError } = await supabase
+    .from('bookings')
+    .insert({
+      tour_instance_id:   instanceId,
+      client_id:          clientId,
+      booking_type:        data.booking_type,
+      source:              'manual',
+      entered_by:          member?.id ?? null,
+      pax:                 data.pax,
+      total_amount:        data.total_amount ?? null,
+      booking_code:        bookingCode,
+      cancellation_token:  cancellationToken,
+      status,
+      locale:              data.locale,
+      internal_notes:      data.notes ?? null,
+    })
+    .select('id, booking_code, status')
+    .single();
+
+  if (bookingError || !booking) {
+    console.error('[manual-booking] Booking insert error:', bookingError);
+    return NextResponse.json({ error: 'Error al crear la reserva' }, { status: 500 });
+  }
+
+  const passengersToInsert = data.passengers.map((p, i) => ({
+    booking_id: booking.id,
+    name:       p.name,
+    id_type:    p.id_type,
+    id_number:  p.id_number,
+    email:      p.email.toLowerCase(),
+    phone:      p.phone,
+    country:    p.country,
+    is_lead:    i === 0 || p.is_lead,
+  }));
+
+  await supabase.from('passengers').insert(passengersToInsert);
+
+  // Email de confirmación al cliente (best-effort, no bloquea la respuesta)
+  const tourName = data.locale === 'en' ? tour.name_en : data.locale === 'pt' ? tour.name_pt : tour.name_es;
+  try {
+    const html = await render(BookingConfirmedEmail({
+      bookingCode,
+      tourName:    tourName ?? tour.name_es,
+      tourDate:    data.tour_date,
+      pax:         data.pax,
+      bookingType: data.booking_type,
+      leadName:    lead.name,
+      locale:      data.locale,
+      cancellationToken,
+    }));
+    const { error: emailError } = await resend.emails.send({
+      from:    'Turismo CaraCara <reservas@turismocaracara.cl>',
+      to:      lead.email,
+      subject: `Reserva confirmada — ${bookingCode}`,
+      html,
+    });
+    if (emailError) console.error('[manual-booking] Email error:', emailError);
+  } catch (emailError) {
+    console.error('[manual-booking] Email error (non-fatal):', emailError);
+  }
+
+  return NextResponse.json({
+    success:      true,
+    booking_id:   booking.id,
+    booking_code: bookingCode,
+    status:       booking.status,
+  }, { status: 201 });
+}

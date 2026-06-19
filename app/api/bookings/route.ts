@@ -5,6 +5,7 @@ import { Resend } from 'resend';
 import { render } from '@react-email/render';
 import { BookingConfirmedEmail } from '@/emails/BookingConfirmed';
 import { NewBookingAdminEmail } from '@/emails/NewBookingAdmin';
+import { resolveTourInstance, generateBookingCode, generateCancellationToken } from '@/lib/booking-engine';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -28,39 +29,6 @@ const BookingSchema = z.object({
   locale:       z.enum(['es', 'en', 'pt']).default('es'),
   notes:        z.string().max(500).optional(),
 });
-
-async function getAvailableVans(date: string): Promise<number> {
-  const [instancesRes, vansRes, blocksRes] = await Promise.all([
-    supabase
-      .from('tour_instances')
-      .select('id')
-      .in('status', ['forming', 'confirmed'])
-      .eq('date', date),
-    supabase
-      .from('vans')
-      .select('id')
-      .eq('active', true),
-    supabase
-      .from('van_blocks')
-      .select('van_id')
-      .eq('date', date),
-  ]);
-  const totalVans   = vansRes.data?.length ?? 0;
-  const blockedVans = new Set((blocksRes.data ?? []).map(b => b.van_id)).size;
-  const usedVans    = instancesRes.data?.length ?? 0;
-  return totalVans - blockedVans - usedVans;
-}
-
-
-function generateBookingCode(year: number, seq: number): string {
-  return `CC-${year}-${String(seq).padStart(4, '0')}`;
-}
-
-function generateCancellationToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
 export async function POST(req: NextRequest) {
   let body: unknown;
@@ -137,80 +105,12 @@ export async function POST(req: NextRequest) {
   const bookingCode = generateBookingCode(year, seq);
   const cancellationToken = generateCancellationToken();
 
-  // ─── Crear o reutilizar tour_instance con validación de disponibilidad ───
-  let instanceId: string;
-
-  if (data.booking_type === 'group') {
-    // Tour grupal: verificar capacidad total sin redistribuir (la distribución ocurre a las 20:00)
-    const { data: groupInstances } = await supabase
-      .from('tour_instances')
-      .select('id, current_pax')
-      .eq('tour_slug', data.tour_slug)
-      .eq('date', data.tour_date)
-      .eq('booking_type', 'group')
-      .in('status', ['forming', 'confirmed']);
-
-    const instances = groupInstances ?? [];
-    const currentTotal = instances.reduce((sum, i) => sum + i.current_pax, 0);
-    const freeVans = await getAvailableVans(data.tour_date);
-    const maxCapacity = (instances.length + freeVans) * 9;
-
-    if (currentTotal + data.pax > maxCapacity) {
-      return NextResponse.json({ error: 'No hay cupos disponibles para esta fecha' }, { status: 409 });
-    }
-
-    // Agregar a instancia existente con cupo, o crear una nueva
-    const fittingInstance = instances.find(i => i.current_pax + data.pax <= 9);
-
-    if (fittingInstance) {
-      await supabase
-        .from('tour_instances')
-        .update({ current_pax: fittingInstance.current_pax + data.pax })
-        .eq('id', fittingInstance.id);
-      instanceId = fittingInstance.id;
-    } else {
-      const { data: newInstance, error: instanceError } = await supabase
-        .from('tour_instances')
-        .insert({
-          tour_slug:    data.tour_slug,
-          date:         data.tour_date,
-          booking_type: 'group',
-          current_pax:  data.pax,
-          max_pax:      9,
-          status:       'forming',
-        })
-        .select('id')
-        .single();
-      if (instanceError || !newInstance) {
-        console.error('Instance insert error:', instanceError);
-        return NextResponse.json({ error: 'Failed to create tour instance' }, { status: 500 });
-      }
-      instanceId = newInstance.id;
-    }
-  } else {
-    // Tour privado: siempre necesita van nueva → verificar disponibilidad
-    const freeVans = await getAvailableVans(data.tour_date);
-    if (freeVans <= 0) {
-      return NextResponse.json({ error: 'No hay disponibilidad para esta fecha. Por favor elige otra fecha.' }, { status: 409 });
-    }
-    const { data: newInstance, error: instanceError } = await supabase
-      .from('tour_instances')
-      .insert({
-        tour_slug:    data.tour_slug,
-        date:         data.tour_date,
-        booking_type: data.booking_type,
-        current_pax:  data.pax,
-        max_pax:      9,
-        status:       'forming',
-      })
-      .select('id')
-      .single();
-    if (instanceError || !newInstance) {
-      console.error('Instance insert error:', instanceError);
-      return NextResponse.json({ error: 'Failed to create tour instance' }, { status: 500 });
-    }
-    instanceId = newInstance.id;
+  // ─── Resolver tour_instance con validación de disponibilidad real ───
+  const instanceResult = await resolveTourInstance(data.tour_slug, data.tour_date, data.booking_type, data.pax);
+  if (instanceResult.error) {
+    return NextResponse.json({ error: instanceResult.error }, { status: 409 });
   }
+  const instanceId = instanceResult.instanceId;
 
   // Crear booking
   const { data: booking, error: bookingError } = await supabase

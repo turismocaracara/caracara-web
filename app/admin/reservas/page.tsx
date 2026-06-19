@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/admin-auth';
+import { requireAdmin, getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import ReservasTable from '@/components/admin/ReservasTable';
@@ -24,7 +24,9 @@ export default async function ReservasPage({
 }: {
   searchParams: { status?: string; q?: string };
 }) {
-  const user = await requireAdmin();
+  const user   = await requireAdmin();
+  const member = await getCurrentTeamMember();
+  const canCreateManual = hasPermission(member, 'manual_booking');
 
   let query = supabase
     .from('bookings')
@@ -78,12 +80,22 @@ export default async function ReservasPage({
     <div className="flex min-h-screen">
       <AdminSidebar userEmail={user.email ?? ''} />
       <main className="flex-1 ml-56 p-6">
-        <div className="mb-6">
-          <h1 className="text-xl font-semibold text-gray-900">Reservas</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
-            {error && <span className="ml-2 text-red-500">· Error: {error.message}</span>}
-          </p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Reservas</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+              {error && <span className="ml-2 text-red-500">· Error: {error.message}</span>}
+            </p>
+          </div>
+          {canCreateManual && (
+            <a
+              href="/admin/reservas/nueva"
+              className="bg-teal text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-teal/90 transition-colors"
+            >
+              + Nueva reserva
+            </a>
+          )}
         </div>
 
         <ReservasTable initialBookings={filtered} />
