@@ -1,10 +1,12 @@
 import { supabase } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import CancelBookingPanel from '@/components/CancelBookingPanel';
+import { getRefundPercent, daysBeforeTour } from '@/lib/cancellation';
 
 interface Props {
   params: { locale: string; code: string };
-  searchParams: { status?: string; collection_status?: string };
+  searchParams: { status?: string; collection_status?: string; token?: string };
 }
 
 const LABELS = {
@@ -80,7 +82,7 @@ export default async function ReservaPage({ params, searchParams }: Props) {
   const { data: booking } = await supabase
     .from('bookings')
     .select(`
-      booking_code, booking_type, pax, status, mp_preference_id,
+      booking_code, booking_type, pax, status, mp_preference_id, cancellation_token, total_amount,
       tour_instances!inner ( date, tour_slug ),
       clients!inner ( name, email )
     `)
@@ -100,6 +102,56 @@ export default async function ReservaPage({ params, searchParams }: Props) {
     .single();
 
   const tourName = locale === 'en' ? tour?.name_en : locale === 'pt' ? tour?.name_pt : tour?.name_es;
+
+  // ─── Flujo de cancelación (link del email con ?token=) ───
+  if (searchParams.token) {
+    const tourDateFmt = fmtDate(tourDate, locale);
+
+    if (booking.status === 'cancelled') {
+      return (
+        <main className="min-h-screen bg-sand flex items-center justify-center px-4 py-16">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+            <p className="text-ink font-semibold">
+              {locale === 'en' ? 'This booking was already cancelled.'
+                : locale === 'pt' ? 'Esta reserva já estava cancelada.'
+                : 'Esta reserva ya estaba cancelada.'}
+            </p>
+          </div>
+        </main>
+      );
+    }
+
+    if (booking.cancellation_token !== searchParams.token) {
+      return (
+        <main className="min-h-screen bg-sand flex items-center justify-center px-4 py-16">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+            <p className="text-ink font-semibold">
+              {locale === 'en' ? 'Invalid or expired link.'
+                : locale === 'pt' ? 'Link inválido ou expirado.'
+                : 'Enlace inválido o vencido.'}
+            </p>
+          </div>
+        </main>
+      );
+    }
+
+    const daysBefore    = daysBeforeTour(tourDate);
+    const refundPercent = await getRefundPercent(tourSlug, daysBefore);
+    const totalAmount   = booking.total_amount ?? 0;
+    const refundAmount  = Math.round(totalAmount * refundPercent / 100);
+
+    return (
+      <CancelBookingPanel
+        bookingCode={booking.booking_code}
+        token={searchParams.token}
+        tourName={tourName ?? tourSlug}
+        tourDateFmt={tourDateFmt}
+        refundPercent={refundPercent}
+        refundAmount={refundAmount}
+        locale={locale}
+      />
+    );
+  }
 
   const isApproved = status === 'approved';
   const isRejected = status === 'rejected';

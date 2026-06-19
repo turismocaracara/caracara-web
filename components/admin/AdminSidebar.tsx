@@ -8,6 +8,7 @@ const NAV = [
   { href: '/admin',          label: 'Dashboard',     icon: '◉' },
   { href: '/admin/reservas', label: 'Reservas',       icon: '📋' },
   { href: '/admin/riesgo',   label: 'Tours en riesgo', icon: '⚠️' },
+  { href: '/admin/devoluciones', label: 'Devoluciones', icon: '💸' },
   { href: '/admin/asignaciones', label: 'Asignaciones', icon: '🧭' },
   { href: '/admin/tours',    label: 'Tours',          icon: '🗺' },
   { href: '/admin/vans',     label: 'Vans',           icon: '🚐' },
