@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { sweepExpiredHolds } from '@/lib/booking-engine';
 
 export type AvailabilityStatus = 'available' | 'forming' | 'full' | 'blocked' | 'past';
 
@@ -58,6 +59,10 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   if (month < 1 || month > 12) {
     return NextResponse.json({ error: 'Mes inválido' }, { status: 400 });
   }
+
+  // Liberar holds de pago vencidos antes de calcular cupos, para no mostrar
+  // como "ocupado" un cupo que en realidad fue abandonado en el checkout.
+  await sweepExpiredHolds();
 
   // ─── Consultas paralelas a Supabase ────────────────────────────────────────
   const startDate = dateStr(year, month, 1);

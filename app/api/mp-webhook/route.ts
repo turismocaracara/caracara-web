@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { supabase } from '@/lib/supabase';
+import { releaseInstanceCapacity } from '@/lib/booking-engine';
 import crypto from 'crypto';
 
 const mp = new MercadoPagoConfig({
@@ -70,16 +71,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  const { data: booking } = await supabase
+    .from('bookings')
+    .select('id, booking_type, status, pax, tour_instance_id')
+    .eq('booking_code', externalRef)
+    .single();
+
+  if (!booking) {
+    return NextResponse.json({ ok: true });
+  }
+
   // Mapear estado MP → estado booking
   let bookingStatus: string | null = null;
   if (mpStatus === 'approved') {
-    // El estado final depende del tipo de reserva (lo obtenemos de la DB)
-    const { data: booking } = await supabase
-      .from('bookings')
-      .select('booking_type')
-      .eq('booking_code', externalRef)
-      .single();
-    bookingStatus = booking?.booking_type === 'group' ? 'waiting_min' : 'confirmed';
+    bookingStatus = booking.booking_type === 'group' ? 'waiting_min' : 'confirmed';
   } else if (mpStatus === 'rejected' || mpStatus === 'cancelled') {
     bookingStatus = 'cancelled';
   }
@@ -92,11 +97,17 @@ export async function POST(req: NextRequest) {
         mp_payment_id: paymentId,
         status:        bookingStatus,
       })
-      .eq('booking_code', externalRef);
+      .eq('id', booking.id);
 
     if (error) {
       console.error('Error updating booking status:', error);
       return NextResponse.json({ error: 'DB error' }, { status: 500 });
+    }
+
+    // Pago rechazado/cancelado → liberar el cupo que esta reserva ocupaba en la van
+    // (idempotente: si ya estaba cancelada, no se libera dos veces)
+    if (bookingStatus === 'cancelled' && booking.status !== 'cancelled' && booking.tour_instance_id) {
+      await releaseInstanceCapacity(booking.tour_instance_id, booking.pax);
     }
 
     console.log(`Booking ${externalRef} → ${bookingStatus} (MP payment ${paymentId})`);

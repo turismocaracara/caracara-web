@@ -5,7 +5,7 @@ import { Resend } from 'resend';
 import { render } from '@react-email/render';
 import { BookingConfirmedEmail } from '@/emails/BookingConfirmed';
 import { NewBookingAdminEmail } from '@/emails/NewBookingAdmin';
-import { resolveTourInstance, generateBookingCode, generateCancellationToken } from '@/lib/booking-engine';
+import { resolveTourInstance, generateBookingCode, generateCancellationToken, getPaymentHoldMinutes } from '@/lib/booking-engine';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -112,6 +112,10 @@ export async function POST(req: NextRequest) {
   }
   const instanceId = instanceResult.instanceId;
 
+  // Hold de pago: si el cliente no completa el pago en este plazo, el cupo se libera solo
+  const holdMinutes = await getPaymentHoldMinutes();
+  const reservedUntil = new Date(Date.now() + holdMinutes * 60_000).toISOString();
+
   // Crear booking
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
@@ -124,6 +128,7 @@ export async function POST(req: NextRequest) {
       booking_code:       bookingCode,
       cancellation_token: cancellationToken,
       status:             data.booking_type === 'group' ? 'waiting_min' : 'pending_payment',
+      reserved_until:      reservedUntil,
       locale:             data.locale,
       internal_notes:     data.notes ?? null,
     })

@@ -22,6 +22,79 @@ export async function getAvailableVans(date: string): Promise<number> {
   return totalVans - blockedVans - usedVans;
 }
 
+/**
+ * Libera el cupo que una reserva había ocupado en su tour_instance (pago rechazado,
+ * hold vencido, o cancelación). Si la instancia queda en 0 pax y aún no fue confirmada,
+ * se cancela para no seguir bloqueando la van ese día.
+ */
+export async function releaseInstanceCapacity(tourInstanceId: string, pax: number): Promise<void> {
+  const { data: inst } = await supabase
+    .from('tour_instances')
+    .select('current_pax, status')
+    .eq('id', tourInstanceId)
+    .single();
+
+  if (!inst) return;
+
+  const newPax = Math.max(0, inst.current_pax - pax);
+  const update: Record<string, unknown> = { current_pax: newPax };
+
+  if (newPax === 0 && inst.status === 'forming') {
+    update.status = 'cancelled';
+  }
+
+  await supabase.from('tour_instances').update(update).eq('id', tourInstanceId);
+}
+
+/**
+ * Cancela reservas cuyo hold de pago venció sin confirmarse (cliente abandonó el
+ * checkout de MercadoPago) y libera el cupo que ocupaban. Se ejecuta de forma
+ * perezosa —en cada intento de reserva y en cada consulta de disponibilidad— en
+ * vez de depender de un cron de alta frecuencia (el plan free de Vercel solo
+ * permite crons una vez al día).
+ */
+export async function sweepExpiredHolds(): Promise<number> {
+  const nowIso = new Date().toISOString();
+
+  const { data: expired } = await supabase
+    .from('bookings')
+    .select('id, tour_instance_id, pax')
+    .in('status', ['pending_payment', 'waiting_min'])
+    .is('mp_payment_id', null)
+    .not('reserved_until', 'is', null)
+    .lt('reserved_until', nowIso);
+
+  if (!expired || expired.length === 0) return 0;
+
+  for (const b of expired) {
+    await supabase
+      .from('bookings')
+      .update({
+        status:              'cancelled',
+        cancelled_at:        nowIso,
+        cancellation_reason: 'payment_timeout',
+        cancellation_by:     'system',
+      })
+      .eq('id', b.id);
+
+    if (b.tour_instance_id) {
+      await releaseInstanceCapacity(b.tour_instance_id, b.pax);
+    }
+  }
+
+  return expired.length;
+}
+
+export async function getPaymentHoldMinutes(): Promise<number> {
+  const { data } = await supabase
+    .from('config')
+    .select('value')
+    .eq('key', 'payment_hold_minutes')
+    .maybeSingle();
+  const minutes = Number(data?.value);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : 20;
+}
+
 export function generateBookingCode(year: number, seq: number): string {
   return `CC-${year}-${String(seq).padStart(4, '0')}`;
 }
@@ -45,6 +118,8 @@ export async function resolveTourInstance(
   bookingType: 'private' | 'group',
   pax: number
 ): Promise<InstanceResult> {
+  await sweepExpiredHolds();
+
   if (bookingType === 'group') {
     const { data: groupInstances } = await supabase
       .from('tour_instances')
