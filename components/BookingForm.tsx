@@ -173,7 +173,10 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
         body:    JSON.stringify({ booking_id: bookingData.booking_id }),
       });
 
-      let mpData: { init_point?: string; sandbox_init_point?: string; error?: string } = {};
+      let mpData: {
+        init_point?: string; sandbox_init_point?: string; error?: string;
+        fully_paid?: boolean; redirect_url?: string;
+      } = {};
       try {
         mpData = await mpRes.json();
       } catch {
@@ -184,9 +187,11 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
         throw new Error(mpData.error ?? 'Error al conectar con MercadoPago');
       }
 
-      // Preferencia creada: redirigir al checkout de MP
-      // sandbox_init_point para credenciales de prueba, init_point para producción
-      const redirectUrl = mpData.sandbox_init_point ?? mpData.init_point;
+      // Crédito cubrió el 100% → ya quedó confirmada, sin pasar por MercadoPago.
+      // Si no, redirigir al checkout de MP (sandbox_init_point en pruebas, init_point en producción)
+      const redirectUrl = mpData.fully_paid
+        ? mpData.redirect_url
+        : (mpData.sandbox_init_point ?? mpData.init_point);
 
       if (!redirectUrl) {
         throw new Error('MercadoPago no devolvió una URL de pago');

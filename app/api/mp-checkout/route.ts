@@ -41,7 +41,7 @@ async function handleCheckout(req: NextRequest, body: unknown) {
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .select(`
-      id, booking_code, booking_type, pax, locale, status,
+      id, booking_code, booking_type, pax, locale, status, client_id,
       tour_instances!inner ( tour_slug, date ),
       clients!inner ( name, email )
     `)
@@ -98,10 +98,30 @@ async function handleCheckout(req: NextRequest, body: unknown) {
 
   const totalAmount = pricePerPerson * booking.pax;
 
-  // Guardar precio en booking
+  // Crédito disponible del cliente (por email) — se aplica automáticamente, el más grande primero
+  const { data: credit } = await supabase
+    .from('client_credits')
+    .select('id, amount_clp')
+    .eq('client_id', booking.client_id)
+    .is('used_at', null)
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+    .order('amount_clp', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const creditApplied = credit ? Math.min(credit.amount_clp, totalAmount) : 0;
+  const creditId       = credit?.id ?? null;
+  const amountDue       = totalAmount - creditApplied;
+
+  // Guardar precio y crédito en booking
   await supabase
     .from('bookings')
-    .update({ price_per_person: pricePerPerson, total_amount: totalAmount })
+    .update({
+      price_per_person: pricePerPerson,
+      total_amount:      totalAmount,
+      credit_applied:    creditApplied,
+      credit_id:         creditId,
+    })
     .eq('id', booking_id);
 
   // Derivar baseUrl limpio desde env var (trim elimina tabs/newlines invisibles)
@@ -114,13 +134,30 @@ async function handleCheckout(req: NextRequest, body: unknown) {
   const successUrl = `${baseUrl}/${locale}/reservas/${booking.booking_code}`;
   console.log('[mp-checkout] back_url (json):', JSON.stringify(successUrl));
 
-  // Forzar enteros (CLP no tiene decimales; Supabase puede retornar numeric como string)
-  const unitPrice = Math.round(Number(pricePerPerson));
-  const quantity  = Math.round(Number(booking.pax));
-  const typeLabel = booking.booking_type === 'group' ? 'Grupal' : 'Privado';
-  const itemTitle = `${tourName ?? tourSlug} - ${typeLabel} - ${tourDate}`;
+  // Crédito cubre el 100% → confirmar directo, sin pasar por MercadoPago
+  if (amountDue <= 0) {
+    const finalStatus = booking.booking_type === 'group' ? 'waiting_min' : 'confirmed';
+    await supabase.from('bookings').update({ status: finalStatus }).eq('id', booking_id);
 
-  // Crear preferencia en MercadoPago
+    if (creditId) {
+      await supabase
+        .from('client_credits')
+        .update({ used_at: new Date().toISOString(), used_in_booking_id: booking_id })
+        .eq('id', creditId);
+    }
+
+    return NextResponse.json({
+      fully_paid:   true,
+      redirect_url: `${successUrl}?status=approved`,
+    });
+  }
+
+  const typeLabel = booking.booking_type === 'group' ? 'Grupal' : 'Privado';
+  const itemTitle = creditApplied > 0
+    ? `${tourName ?? tourSlug} - ${typeLabel} - ${tourDate} (crédito $${creditApplied.toLocaleString('es-CL')} aplicado)`
+    : `${tourName ?? tourSlug} - ${typeLabel} - ${tourDate}`;
+
+  // Crear preferencia en MercadoPago — un solo ítem por el monto neto a pagar
   const preference = new Preference(mp);
   const pref = await preference.create({
     body: {
@@ -128,8 +165,8 @@ async function handleCheckout(req: NextRequest, body: unknown) {
       items: [{
         id:          tourSlug,
         title:       itemTitle,
-        quantity,
-        unit_price:  unitPrice,
+        quantity:    1,
+        unit_price:  Math.round(amountDue),
         currency_id: 'CLP',
       }],
       back_urls: {

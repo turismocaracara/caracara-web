@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
   const { data: booking } = await supabase
     .from('bookings')
-    .select('id, booking_type, status, pax, tour_instance_id')
+    .select('id, booking_type, status, pax, tour_instance_id, credit_id')
     .eq('booking_code', externalRef)
     .single();
 
@@ -108,6 +108,16 @@ export async function POST(req: NextRequest) {
     // (idempotente: si ya estaba cancelada, no se libera dos veces)
     if (bookingStatus === 'cancelled' && booking.status !== 'cancelled' && booking.tour_instance_id) {
       await releaseInstanceCapacity(booking.tour_instance_id, booking.pax);
+    }
+
+    // Pago aprobado con crédito aplicado → consumir el crédito recién ahora (no antes,
+    // para no perderlo si el pago terminaba rechazado)
+    if (bookingStatus !== 'cancelled' && booking.credit_id) {
+      await supabase
+        .from('client_credits')
+        .update({ used_at: new Date().toISOString(), used_in_booking_id: booking.id })
+        .eq('id', booking.credit_id)
+        .is('used_at', null);
     }
 
     console.log(`Booking ${externalRef} → ${bookingStatus} (MP payment ${paymentId})`);
