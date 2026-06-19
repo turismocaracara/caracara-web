@@ -12,6 +12,7 @@ const NAV = [
   { href: '/admin/tours',    label: 'Tours',          icon: '🗺' },
   { href: '/admin/vans',     label: 'Vans',           icon: '🚐' },
   { href: '/admin/equipo',   label: 'Equipo',         icon: '👥' },
+  { href: '/admin/reportes', label: 'Reportes',       icon: '📊' },
   { href: '/admin/config',   label: 'Configuración',  icon: '⚙' },
 ];
 

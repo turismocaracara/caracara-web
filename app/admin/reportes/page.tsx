@@ -1,0 +1,144 @@
+import { redirect } from 'next/navigation';
+import { requireAdmin, getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
+import { supabase } from '@/lib/supabase';
+import AdminSidebar from '@/components/admin/AdminSidebar';
+import ReportesManager, {
+  type MonthlyRevenue,
+  type TourMonthRevenue,
+  type CostItemRow,
+  type TourOption,
+} from '@/components/admin/ReportesManager';
+
+interface RawBooking {
+  pax: number;
+  total_amount: number | null;
+  tour_instances:
+    | { tour_slug: string; date: string; tours: { name_es: string } | { name_es: string }[] | null }
+    | { tour_slug: string; date: string; tours: { name_es: string } | { name_es: string }[] | null }[]
+    | null;
+}
+
+export default async function ReportesPage() {
+  const user   = await requireAdmin();
+  const member = await getCurrentTeamMember();
+  if (!hasPermission(member, 'view_financials')) redirect('/admin');
+
+  const today      = new Date();
+  const thisMonth  = today.toISOString().slice(0, 7);
+  const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1);
+
+  const [bookingsRes, costItemsRes, toursRes, instancesRes] = await Promise.all([
+    supabase
+      .from('bookings')
+      .select(`
+        pax, total_amount,
+        tour_instances ( tour_slug, date, tours ( name_es ) )
+      `)
+      .not('status', 'in', '("cancelled","refunded")'),
+    supabase.from('tour_cost_items').select('id, tour_slug, concept, amount_clp, unit').order('tour_slug'),
+    supabase.from('tours').select('slug, name_es').eq('active', true).order('name_es'),
+    supabase
+      .from('tour_instances')
+      .select('tour_slug, date')
+      .in('status', ['confirmed', 'executed'])
+      .gte('date', `${thisMonth}-01`),
+  ]);
+
+  const bookings = (bookingsRes.data ?? []) as unknown as RawBooking[];
+
+  // ─── Ingresos mensuales (últimos 6 meses) ───
+  const monthlyMap = new Map<string, { revenue: number; pax: number; count: number }>();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(sixMonthsAgo.getFullYear(), sixMonthsAgo.getMonth() + i, 1);
+    monthlyMap.set(d.toISOString().slice(0, 7), { revenue: 0, pax: 0, count: 0 });
+  }
+
+  // ─── Este mes por tour ───
+  const tourMonthMap = new Map<string, { tour_name: string; revenue: number; pax: number; count: number }>();
+
+  for (const b of bookings) {
+    const inst = Array.isArray(b.tour_instances) ? b.tour_instances[0] : b.tour_instances;
+    if (!inst) continue;
+    const tour = Array.isArray(inst.tours) ? inst.tours[0] : inst.tours;
+    const month = inst.date.slice(0, 7);
+    const amount = b.total_amount ?? 0;
+
+    if (monthlyMap.has(month)) {
+      const m = monthlyMap.get(month)!;
+      m.revenue += amount;
+      m.pax     += b.pax;
+      m.count   += 1;
+    }
+
+    if (month === thisMonth) {
+      const key = inst.tour_slug;
+      const existing = tourMonthMap.get(key) ?? { tour_name: tour?.name_es ?? key, revenue: 0, pax: 0, count: 0 };
+      existing.revenue += amount;
+      existing.pax     += b.pax;
+      existing.count   += 1;
+      tourMonthMap.set(key, existing);
+    }
+  }
+
+  const instanceCountByTour = new Map<string, number>();
+  for (const inst of instancesRes.data ?? []) {
+    instanceCountByTour.set(inst.tour_slug, (instanceCountByTour.get(inst.tour_slug) ?? 0) + 1);
+  }
+
+  const monthlyRevenue: MonthlyRevenue[] = Array.from(monthlyMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, v]) => ({ month, ...v }));
+
+  const tourMonthRevenue: TourMonthRevenue[] = Array.from(tourMonthMap.entries()).map(([slug, v]) => ({
+    tour_slug: slug,
+    tour_name: v.tour_name,
+    revenue:   v.revenue,
+    pax:       v.pax,
+    count:     v.count,
+    instances: instanceCountByTour.get(slug) ?? 0,
+  }));
+
+  const costItems: CostItemRow[] = (costItemsRes.data ?? []) as CostItemRow[];
+  const tours:     TourOption[]  = (toursRes.data ?? []) as TourOption[];
+
+  return (
+    <div className="flex min-h-screen">
+      <AdminSidebar userEmail={user.email ?? ''} />
+      <main className="flex-1 ml-56 p-6 max-w-4xl">
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold text-gray-900">Reportes financieros</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Ingresos por reservas y rentabilidad estimada por tour
+            {costItemsRes.error?.message.includes('schema cache') && (
+              <span className="block text-red-500 mt-1">
+                Falta crear la tabla tour_cost_items — revisa el SQL indicado más abajo.
+              </span>
+            )}
+          </p>
+        </div>
+
+        {costItemsRes.error?.message.includes('schema cache') ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-800">
+            <p className="font-semibold mb-2">La tabla <code>tour_cost_items</code> no existe aún.</p>
+            <p className="mb-3">Ejecuta este SQL en Supabase:</p>
+            <pre className="bg-white border border-amber-100 rounded-lg p-3 text-xs overflow-auto font-mono whitespace-pre-wrap">{`create table if not exists public.tour_cost_items (
+  id          uuid primary key default gen_random_uuid(),
+  tour_slug   text not null references public.tours(slug) on delete cascade,
+  concept     text not null,
+  amount_clp  int not null,
+  unit        text not null check (unit in ('per_person', 'per_van', 'fixed')),
+  created_at  timestamptz not null default now()
+);`}</pre>
+          </div>
+        ) : (
+          <ReportesManager
+            monthlyRevenue={monthlyRevenue}
+            tourMonthRevenue={tourMonthRevenue}
+            costItems={costItems}
+            tours={tours}
+          />
+        )}
+      </main>
+    </div>
+  );
+}
