@@ -195,18 +195,34 @@ export function generateCancellationToken(): string {
 
 type InstanceResult = { instanceId: string; error?: undefined } | { instanceId?: undefined; error: string };
 
+const MAX_RACE_RETRIES = 3;
+
 /**
  * Resuelve a qué tour_instance se asigna una reserva, verificando cupo real.
  * Tour grupal: suma pax a una instancia existente con espacio, o crea una nueva (sin redistribuir — eso ocurre en el cron de las 20:00).
  * Tour privado: siempre requiere una van nueva.
+ *
+ * Dos mitigaciones contra condiciones de carrera (dos reservas simultáneas para
+ * el mismo cupo, ej. el último asiento de una van):
+ * 1. Sumar pax a una instancia existente usa un UPDATE atómico con guarda
+ *    (`current_pax <= 9 - pax`) en vez de leer-y-luego-escribir. Si pierde la
+ *    carrera, reintenta recalculando desde cero (hasta MAX_RACE_RETRIES veces).
+ * 2. Crear una instancia nueva (van nueva) se valida DESPUÉS de insertar: si la
+ *    inserción hizo que se exceda la cantidad de vans disponibles ese día
+ *    (porque otra request insertó al mismo tiempo), se revierte el insert.
  */
 export async function resolveTourInstance(
   tourSlug: string,
   tourDate: string,
   bookingType: 'private' | 'group',
-  pax: number
+  pax: number,
+  attempt = 0
 ): Promise<InstanceResult> {
-  await sweepExpiredHolds();
+  if (attempt === 0) await sweepExpiredHolds();
+
+  if (attempt > MAX_RACE_RETRIES) {
+    return { error: 'No se pudo confirmar el cupo, por favor intenta nuevamente' };
+  }
 
   if (bookingType === 'group') {
     const { data: groupInstances } = await supabase
@@ -229,11 +245,17 @@ export async function resolveTourInstance(
     const fittingInstance = instances.find(i => i.current_pax + pax <= 9);
 
     if (fittingInstance) {
-      await supabase
+      const { data: updated } = await supabase
         .from('tour_instances')
         .update({ current_pax: fittingInstance.current_pax + pax })
-        .eq('id', fittingInstance.id);
-      return { instanceId: fittingInstance.id };
+        .eq('id', fittingInstance.id)
+        .lte('current_pax', 9 - pax)
+        .select('id')
+        .maybeSingle();
+
+      if (updated) return { instanceId: updated.id };
+      // Otra reserva ocupó el cupo justo antes — recalcular desde cero
+      return resolveTourInstance(tourSlug, tourDate, bookingType, pax, attempt + 1);
     }
 
     const { data: newInstance, error } = await supabase
@@ -249,6 +271,11 @@ export async function resolveTourInstance(
       .select('id')
       .single();
     if (error || !newInstance) return { error: 'Failed to create tour instance' };
+
+    if (await getAvailableVans(tourDate) < 0) {
+      await supabase.from('tour_instances').delete().eq('id', newInstance.id);
+      return { error: 'No hay cupos disponibles para esta fecha' };
+    }
     return { instanceId: newInstance.id };
   }
 
@@ -270,5 +297,10 @@ export async function resolveTourInstance(
     .select('id')
     .single();
   if (error || !newInstance) return { error: 'Failed to create tour instance' };
+
+  if (await getAvailableVans(tourDate) < 0) {
+    await supabase.from('tour_instances').delete().eq('id', newInstance.id);
+    return { error: 'No hay disponibilidad para esta fecha. Por favor elige otra fecha.' };
+  }
   return { instanceId: newInstance.id };
 }
