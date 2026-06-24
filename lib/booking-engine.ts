@@ -135,6 +135,27 @@ export async function releaseInstanceCapacity(tourInstanceId: string, pax: numbe
 }
 
 /**
+ * Igual que releaseInstanceCapacity, pero para una reserva completa — libera la
+ * van principal y, si el grupo se repartió en 2 vans (>9 pax), también la
+ * secundaria. Usar esta función en vez de releaseInstanceCapacity directamente
+ * en cualquier lugar que cancele/libere una reserva grupal, para no dejar cupo
+ * fantasma ocupado en la segunda van cuando corresponde liberarla.
+ */
+export async function releaseBookingCapacity(booking: {
+  tour_instance_id: string | null;
+  secondary_instance_id?: string | null;
+  secondary_pax?: number | null;
+  pax: number;
+}): Promise<void> {
+  if (!booking.tour_instance_id) return;
+  const primaryPax = booking.secondary_instance_id ? booking.pax - (booking.secondary_pax ?? 0) : booking.pax;
+  await releaseInstanceCapacity(booking.tour_instance_id, primaryPax);
+  if (booking.secondary_instance_id && booking.secondary_pax) {
+    await releaseInstanceCapacity(booking.secondary_instance_id, booking.secondary_pax);
+  }
+}
+
+/**
  * Cancela reservas cuyo hold de pago venció sin confirmarse (cliente abandonó el
  * checkout de MercadoPago) y libera el cupo que ocupaban. Se ejecuta de forma
  * perezosa —en cada intento de reserva y en cada consulta de disponibilidad— en
@@ -146,7 +167,7 @@ export async function sweepExpiredHolds(): Promise<number> {
 
   const { data: expired } = await supabase
     .from('bookings')
-    .select('id, tour_instance_id, pax')
+    .select('id, tour_instance_id, secondary_instance_id, secondary_pax, pax')
     .in('status', ['pending_payment', 'waiting_min'])
     .is('mp_payment_id', null)
     .not('reserved_until', 'is', null)
@@ -166,7 +187,7 @@ export async function sweepExpiredHolds(): Promise<number> {
       .eq('id', b.id);
 
     if (b.tour_instance_id) {
-      await releaseInstanceCapacity(b.tour_instance_id, b.pax);
+      await releaseBookingCapacity(b);
     }
   }
 
@@ -187,15 +208,235 @@ export function generateBookingCode(year: number, seq: number): string {
   return `CC-${year}-${String(seq).padStart(4, '0')}`;
 }
 
+/**
+ * Determina si una reserva representa plata realmente recibida — para reportes
+ * financieros. 'confirmed' siempre implica pago (online vía webhook, crédito que
+ * cubre el 100%, o entrada manual de un admin que coordinó el pago fuera del
+ * sistema). 'waiting_min' es ambiguo para tours grupales: el mismo estado se usa
+ * tanto recién creada (sin pagar aún) como ya pagada y esperando el mínimo de
+ * pax — por eso se exige evidencia de pago (mp_payment_id, crédito aplicado, o
+ * que haya sido ingresada manualmente por el equipo). 'pending_payment' y el
+ * resto de estados nunca cuentan como ingreso.
+ */
+export function isBookingPaid(b: {
+  status: string;
+  source?: string | null;
+  mp_payment_id?: string | null;
+  credit_applied?: number | null;
+}): boolean {
+  if (b.status === 'confirmed') return true;
+  if (b.status === 'waiting_min') {
+    return b.source === 'manual' || !!b.mp_payment_id || (b.credit_applied ?? 0) > 0;
+  }
+  return false;
+}
+
 export function generateCancellationToken(): string {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-type InstanceResult = { instanceId: string; error?: undefined } | { instanceId?: undefined; error: string };
+interface PackItem { bookingId: string | null; pax: number; currentInstanceId: string | null; }
+interface Bin { pax: number; items: PackItem[]; }
+
+/**
+ * Cuando un grupo nuevo no cabe en ninguna instancia 'forming' existente ni hay van
+ * libre para abrir una nueva, intenta reempaquetar los grupos YA asignados (cada
+ * booking es la unidad indivisible) junto con el nuevo, para ver si consolidándolos
+ * en menos vans se libera espacio. Ej: Van1=[4], Van2=[5] (9 en total, cabrían juntos)
+ * + nuevo grupo de 6 → repacking junta [4,5] en una van y deja la otra libre para el 6.
+ * Sin esto, esa reserva se rechazaría aunque sí hay espacio combinado.
+ *
+ * Usa first-fit-decreasing (suficiente dado el tamaño chico del problema: pocos
+ * grupos, máx. 9 pax por van) en vez de buscar la partición óptima exacta.
+ *
+ * No corre dentro de una transacción de Postgres (igual que el resto de este
+ * archivo) — el riesgo de carrera es aceptable porque esta ruta solo se activa
+ * cuando ya falló el camino rápido (sin cupo directo ni van libre), un caso poco
+ * frecuente dado el volumen de este negocio.
+ */
+async function tryRebalanceGroupInstances(
+  tourSlug: string,
+  tourDate: string,
+  newPax: number,
+  maxBins: number
+): Promise<{ instanceId: string } | null> {
+  const { data: instances } = await supabase
+    .from('tour_instances')
+    .select('id, bookings ( id, pax, status, secondary_instance_id )')
+    .eq('tour_slug', tourSlug)
+    .eq('date', tourDate)
+    .eq('booking_type', 'group')
+    .eq('status', 'forming');
+
+  const existingInstances = (instances ?? []) as unknown as {
+    id: string; bookings: { id: string; pax: number; status: string; secondary_instance_id: string | null }[] | null;
+  }[];
+
+  // Una reserva dividida en 2 vans (>9 pax) ocupa un chunk en esta instancia y
+  // otro en otra distinta — reempaquetarla aquí con su pax TOTAL la trataría
+  // como si necesitara un solo van de ese tamaño, lo que nunca cabe (>9) y
+  // arruinaría el resultado. Es un caso rarísimo (requiere una reserva >9 pax Y
+  // que el camino rápido ya haya fallado); ante esa combinación, simplemente no
+  // se intenta reempaquetar en vez de manejarlo mal.
+  const hasSplitBooking = existingInstances.some(inst =>
+    (inst.bookings ?? []).some(b => b.status === 'waiting_min' && b.secondary_instance_id)
+  );
+  if (hasSplitBooking) return null;
+
+  const items: PackItem[] = existingInstances.flatMap(inst =>
+    (inst.bookings ?? [])
+      .filter(b => b.status === 'waiting_min')
+      .map(b => ({ bookingId: b.id, pax: b.pax, currentInstanceId: inst.id }))
+  );
+  items.push({ bookingId: null, pax: newPax, currentInstanceId: null });
+  items.sort((a, b) => b.pax - a.pax);
+
+  const bins: Bin[] = [];
+  for (const item of items) {
+    const fitting = bins.find(bin => bin.pax + item.pax <= 9);
+    if (fitting) {
+      fitting.pax += item.pax;
+      fitting.items.push(item);
+    } else if (bins.length < maxBins) {
+      bins.push({ pax: item.pax, items: [item] });
+    } else {
+      return null; // no existe una repartición válida dentro de los vans disponibles
+    }
+  }
+
+  // Aplicar: reutilizar instancias existentes para los primeros bins, crear nuevas
+  // para el resto, mover los bookings que cambiaron de instancia, y cerrar las
+  // instancias existentes que quedaron sin reservas.
+  let newPaxInstanceId = '';
+  const usedExistingIds = new Set<string>();
+
+  for (let i = 0; i < bins.length; i++) {
+    const bin = bins[i];
+    let instanceId: string;
+
+    if (i < existingInstances.length) {
+      instanceId = existingInstances[i].id;
+      usedExistingIds.add(instanceId);
+    } else {
+      const { data: created, error } = await supabase
+        .from('tour_instances')
+        .insert({ tour_slug: tourSlug, date: tourDate, booking_type: 'group', current_pax: 0, max_pax: 9, status: 'forming' })
+        .select('id')
+        .single();
+      if (error || !created) return null;
+      instanceId = created.id;
+    }
+
+    for (const item of bin.items) {
+      if (item.bookingId === null) {
+        newPaxInstanceId = instanceId;
+      } else if (item.currentInstanceId !== instanceId) {
+        await supabase.from('bookings').update({ tour_instance_id: instanceId }).eq('id', item.bookingId);
+      }
+    }
+
+    await supabase.from('tour_instances').update({ current_pax: bin.pax }).eq('id', instanceId);
+  }
+
+  // Instancias existentes que ya no recibieron ningún grupo tras el reempaquetado
+  for (const inst of existingInstances) {
+    if (!usedExistingIds.has(inst.id)) {
+      await supabase.from('tour_instances').update({ current_pax: 0, status: 'cancelled' }).eq('id', inst.id);
+    }
+  }
+
+  return { instanceId: newPaxInstanceId };
+}
+
+type InstanceResult =
+  | { instanceId: string; secondaryInstanceId?: string; secondaryPax?: number; error?: undefined }
+  | { instanceId?: undefined; error: string };
 
 const MAX_RACE_RETRIES = 3;
+
+interface VanSlot { instanceId?: string; freeCap: number; }
+
+/**
+ * Un grupo de más de 9 pax es indivisible como EXPERIENCIA (viajan juntos al mismo
+ * tour) pero no como vehículo: se reparte en 2 vans, llenando la primera lo más
+ * posible. El espacio que les sobra en la segunda van queda disponible para que
+ * otros grupos independientes lo reserven (es la misma van compartida de siempre).
+ * Por eso esto NO usa tryRebalanceGroupInstances (que trata cada booking como una
+ * unidad indivisible de un solo van) — un booking >9 pax es, a efectos de cupo,
+ * 2 unidades en 2 vans distintas desde el principio.
+ */
+async function resolveLargeGroupSplit(
+  tourSlug: string,
+  tourDate: string,
+  pax: number,
+  attempt = 0
+): Promise<InstanceResult> {
+  if (attempt > MAX_RACE_RETRIES) {
+    return { error: 'No se pudo confirmar el cupo, por favor intenta nuevamente' };
+  }
+
+  const { data: groupInstances } = await supabase
+    .from('tour_instances')
+    .select('id, current_pax')
+    .eq('tour_slug', tourSlug)
+    .eq('date', tourDate)
+    .eq('booking_type', 'group')
+    .in('status', ['forming', 'confirmed']);
+
+  const instances = groupInstances ?? [];
+  const freeVans  = await getAvailableVans(tourDate);
+
+  const slots: VanSlot[] = instances.map(i => ({ instanceId: i.id, freeCap: 9 - i.current_pax }));
+  for (let i = 0; i < freeVans; i++) slots.push({ freeCap: 9 });
+  slots.sort((a, b) => b.freeCap - a.freeCap);
+
+  if (slots.length < 2 || slots[0].freeCap + slots[1].freeCap < pax) {
+    return { error: 'No hay cupos disponibles para esta fecha (se necesitan 2 vans para más de 9 pasajeros)' };
+  }
+
+  const primaryPax   = Math.min(slots[0].freeCap, 9, pax);
+  const secondaryPax = pax - primaryPax;
+  if (secondaryPax <= 0 || secondaryPax > slots[1].freeCap) {
+    return { error: 'No hay cupos disponibles para esta fecha (se necesitan 2 vans para más de 9 pasajeros)' };
+  }
+
+  async function claimSlot(slot: VanSlot, slotPax: number): Promise<string | null> {
+    if (slot.instanceId) {
+      const currentPaxBefore = 9 - slot.freeCap;
+      const { data: updated } = await supabase
+        .from('tour_instances')
+        .update({ current_pax: currentPaxBefore + slotPax })
+        .eq('id', slot.instanceId)
+        .lte('current_pax', 9 - slotPax)
+        .select('id')
+        .maybeSingle();
+      return updated?.id ?? null;
+    }
+    const { data: created, error } = await supabase
+      .from('tour_instances')
+      .insert({ tour_slug: tourSlug, date: tourDate, booking_type: 'group', current_pax: slotPax, max_pax: 9, status: 'forming' })
+      .select('id')
+      .single();
+    return (!error && created) ? created.id : null;
+  }
+
+  const primaryInstanceId = await claimSlot(slots[0], primaryPax);
+  if (!primaryInstanceId) {
+    // otra reserva ocupó ese cupo justo antes — recalcular desde cero
+    return resolveLargeGroupSplit(tourSlug, tourDate, pax, attempt + 1);
+  }
+
+  const secondaryInstanceId = await claimSlot(slots[1], secondaryPax);
+  if (!secondaryInstanceId) {
+    // revertir lo ya reservado en la primera van para no dejar cupo fantasma
+    await releaseInstanceCapacity(primaryInstanceId, primaryPax);
+    return resolveLargeGroupSplit(tourSlug, tourDate, pax, attempt + 1);
+  }
+
+  return { instanceId: primaryInstanceId, secondaryInstanceId, secondaryPax };
+}
 
 /**
  * Resuelve a qué tour_instance se asigna una reserva, verificando cupo real.
@@ -222,6 +463,12 @@ export async function resolveTourInstance(
 
   if (attempt > MAX_RACE_RETRIES) {
     return { error: 'No se pudo confirmar el cupo, por favor intenta nuevamente' };
+  }
+
+  // Grupo de más de 9 pax: viajan juntos al mismo tour pero necesitan 2 vans
+  // (capacidad 9 cada una) — camino dedicado, ver resolveLargeGroupSplit.
+  if (bookingType === 'group' && pax > 9) {
+    return resolveLargeGroupSplit(tourSlug, tourDate, pax);
   }
 
   if (bookingType === 'group') {
@@ -256,6 +503,16 @@ export async function resolveTourInstance(
       if (updated) return { instanceId: updated.id };
       // Otra reserva ocupó el cupo justo antes — recalcular desde cero
       return resolveTourInstance(tourSlug, tourDate, bookingType, pax, attempt + 1);
+    }
+
+    // No cabe en ninguna instancia existente. Si no hay van libre para abrir una
+    // nueva, antes de rechazar la reserva, intentar reempaquetar los grupos
+    // 'forming' ya asignados — puede que consolidándolos en menos vans se libere
+    // el espacio que este grupo necesita (ver tryRebalanceGroupInstances).
+    if (freeVans <= 0) {
+      const rebalanced = await tryRebalanceGroupInstances(tourSlug, tourDate, pax, instances.length);
+      if (rebalanced) return rebalanced;
+      return { error: 'No hay cupos disponibles para esta fecha' };
     }
 
     const { data: newInstance, error } = await supabase

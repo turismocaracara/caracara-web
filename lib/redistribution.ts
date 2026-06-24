@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { isBookingPaid } from '@/lib/booking-engine';
 
 // Encuentra la partición de grupos en vans que maximiza pax en van[0].
 // Retorna assignment[i] = índice de van para el grupo i, o null si imposible.
@@ -75,15 +76,19 @@ export async function distributeGroups(
     return { success: false, totalPax: 0, vans: 0, error: 'sin_instancias' };
   }
 
-  // 2. Obtener todos los bookings activos de esas instancias
+  // 2. Obtener todos los bookings activos de esas instancias — solo los que ya
+  // tienen pago confirmado entran al conteo. Una reserva creada minutos antes de
+  // las 20:00 sigue 'waiting_min' (sin pagar) durante su ventana de hold; sin este
+  // filtro, contaría para el mínimo y terminaría marcada 'confirmed' sin haber
+  // pagado nunca.
   const instanceIds = instances.map(i => i.id);
   const { data: bookings } = await supabase
     .from('bookings')
-    .select('id, tour_instance_id, pax')
+    .select('id, tour_instance_id, secondary_instance_id, secondary_pax, pax, status, source, mp_payment_id, credit_applied')
     .in('tour_instance_id', instanceIds)
     .not('status', 'in', '("cancelled","refunded")');
 
-  const groups = bookings ?? [];
+  const groups = (bookings ?? []).filter(isBookingPaid);
   const totalPax = groups.reduce((sum, b) => sum + b.pax, 0);
 
   // 3. Verificar mínimo operacional
@@ -93,7 +98,23 @@ export async function distributeGroups(
 
   // 4. Determinar cuántas vans se necesitan (máx 2)
   const numVans = Math.min(instances.length, 2);
-  const groupPax = groups.map(b => b.pax);
+
+  // Una reserva dividida en 2 vans (>9 pax, ver resolveLargeGroupSplit) entra a la
+  // partición como 2 ítems independientes — nunca podrían volver a juntarse en
+  // una sola van (la suma siempre supera la capacidad de 9), pero cada ítem por
+  // separado sí puede moverse si la redistribución encuentra un mejor reparto.
+  interface PartitionItem { bookingId: string; pax: number; }
+  const items: PartitionItem[] = [];
+  for (const b of groups) {
+    if (b.secondary_instance_id && b.secondary_pax) {
+      items.push({ bookingId: b.id, pax: b.pax - b.secondary_pax });
+      items.push({ bookingId: b.id, pax: b.secondary_pax });
+    } else {
+      items.push({ bookingId: b.id, pax: b.pax });
+    }
+  }
+
+  const groupPax = items.map(it => it.pax);
   const assignment = findBestPartition(groupPax, numVans, 9, groupMinPax);
 
   if (!assignment) {
@@ -104,19 +125,41 @@ export async function distributeGroups(
   const vanPax = new Array(numVans).fill(0);
   for (let i = 0; i < groupPax.length; i++) vanPax[assignment[i]] += groupPax[i];
 
-  // 6. Mover bookings que cambian de instancia
+  // 6. Mover bookings que cambian de instancia — agrupado por booking, ya que una
+  // reserva dividida aporta 2 ítems que pueden terminar en vans distintas.
   const vanToInstance = instances.map(i => i.id);
-  for (let i = 0; i < groups.length; i++) {
+  const chunksByBooking = new Map<string, { instanceId: string; pax: number }[]>();
+  for (let i = 0; i < items.length; i++) {
     const targetInstId = vanToInstance[assignment[i]];
-    if (targetInstId && groups[i].tour_instance_id !== targetInstId) {
-      const { error: moveError } = await supabase
-        .from('bookings')
-        .update({ tour_instance_id: targetInstId })
-        .eq('id', groups[i].id);
-      if (moveError) {
-        console.error(`[redistrib] ${tourSlug} ${tourDate}: error moviendo booking ${groups[i].id}:`, moveError.message);
-        return { success: false, totalPax, vans: numVans, error: 'error_sistema' };
-      }
+    if (!targetInstId) continue;
+    const arr = chunksByBooking.get(items[i].bookingId) ?? [];
+    arr.push({ instanceId: targetInstId, pax: items[i].pax });
+    chunksByBooking.set(items[i].bookingId, arr);
+  }
+
+  for (const booking of groups) {
+    const chunks = chunksByBooking.get(booking.id) ?? [];
+    const [primary, secondary] = chunks;
+    if (!primary) continue;
+
+    const unchanged =
+      booking.tour_instance_id === primary.instanceId &&
+      (booking.secondary_instance_id ?? null) === (secondary?.instanceId ?? null) &&
+      (booking.secondary_pax ?? null) === (secondary?.pax ?? null);
+    if (unchanged) continue;
+
+    const { error: moveError } = await supabase
+      .from('bookings')
+      .update({
+        tour_instance_id:      primary.instanceId,
+        secondary_instance_id: secondary?.instanceId ?? null,
+        secondary_pax:         secondary?.pax ?? null,
+      })
+      .eq('id', booking.id);
+
+    if (moveError) {
+      console.error(`[redistrib] ${tourSlug} ${tourDate}: error moviendo booking ${booking.id}:`, moveError.message);
+      return { success: false, totalPax, vans: numVans, error: 'error_sistema' };
     }
   }
 
@@ -145,12 +188,12 @@ export async function distributeGroups(
     }
   }
 
-  // 9. Actualizar bookings a 'confirmed'
+  // 9. Actualizar a 'confirmed' solo las reservas pagadas que sí participaron del
+  // reparto — una reserva sin pagar en la misma instancia queda como estaba.
   const { error: confirmBookingsError } = await supabase
     .from('bookings')
     .update({ status: 'confirmed' })
-    .in('tour_instance_id', instanceIds)
-    .not('status', 'in', '("cancelled","refunded")');
+    .in('id', groups.map(g => g.id));
 
   if (confirmBookingsError) {
     console.error(`[redistrib] ${tourSlug} ${tourDate}: error confirmando bookings:`, confirmBookingsError.message);
