@@ -42,6 +42,13 @@ function daysInMonth(year: number, month: number): number {
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const { slug } = params;
+
+  // slug se interpola directo en un filtro .or() de PostgREST más abajo — sin esta
+  // validación, una coma o paréntesis en la URL podría inyectar condiciones de filtro.
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    return NextResponse.json({ error: 'Tour no encontrado' }, { status: 404 });
+  }
+
   const monthParam = req.nextUrl.searchParams.get('month'); // formato: YYYY-MM
 
   // Validar parámetro month

@@ -28,6 +28,9 @@ const BookingSchema = z.object({
   passengers:   z.array(PassengerSchema).min(1).max(18),
   locale:       z.enum(['es', 'en', 'pt']).default('es'),
   notes:        z.string().max(500).optional(),
+}).refine(data => data.pax === data.passengers.length, {
+  message: 'pax debe coincidir con la cantidad de pasajeros',
+  path:    ['pax'],
 });
 
 export async function POST(req: NextRequest) {
