@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { requireAdmin, getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
+import { isBookingPaid, sweepExpiredHolds } from '@/lib/booking-engine';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 
 interface TodayInstance {
@@ -49,6 +50,10 @@ export default async function AdminDashboard() {
   // Ingresos del mes + lista de clientes recientes — no es "tour propio del guía".
   if (member?.role === 'guide') redirect('/admin/asignaciones');
 
+  // Sin esto, un hold de pago vencido pero todavía no barrido por el lazy-sweep
+  // se contaría como ingreso real en el KPI del mes.
+  await sweepExpiredHolds();
+
   const today      = new Date().toISOString().slice(0, 10);
   const monthStart = today.slice(0, 7) + '-01';
   const monthEnd   = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)
@@ -80,7 +85,7 @@ export default async function AdminDashboard() {
     // Métricas del mes (por created_at)
     supabase
       .from('bookings')
-      .select('status, total_amount, pax')
+      .select('status, total_amount, credit_applied, source, mp_payment_id, pax')
       .gte('created_at', monthStart + 'T00:00:00')
       .lte('created_at', monthEnd + 'T23:59:59')
       .neq('status', 'cancelled'),
@@ -90,7 +95,11 @@ export default async function AdminDashboard() {
   const recentBookings = recentRes.data ?? [];
   const monthData      = statsRes.data ?? [];
 
-  const monthTotal   = monthData.reduce((s, b) => s + (b.total_amount ?? 0), 0);
+  // Ingresos solo de reservas con pago confirmado, netos del crédito aplicado
+  // (esa parte ya había entrado como plata en una reserva anterior).
+  const monthTotal = monthData
+    .filter(isBookingPaid)
+    .reduce((s, b) => s + (b.total_amount ?? 0) - (b.credit_applied ?? 0), 0);
   const monthPax     = monthData.reduce((s, b) => s + (b.pax ?? 0), 0);
   const monthCount   = monthData.length;
   const pendingCount = monthData.filter(b =>

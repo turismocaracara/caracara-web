@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { requireAdmin, getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
+import { isBookingPaid, sweepExpiredHolds } from '@/lib/booking-engine';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import ReportesManager, {
   type MonthlyRevenue,
@@ -12,6 +13,10 @@ import ReportesManager, {
 interface RawBooking {
   pax: number;
   total_amount: number | null;
+  credit_applied: number | null;
+  status: string;
+  source: string | null;
+  mp_payment_id: string | null;
   tour_instances:
     | { tour_slug: string; date: string; tours: { name_es: string } | { name_es: string }[] | null }
     | { tour_slug: string; date: string; tours: { name_es: string } | { name_es: string }[] | null }[]
@@ -23,6 +28,11 @@ export default async function ReportesPage() {
   const member = await getCurrentTeamMember();
   if (!hasPermission(member, 'view_financials')) redirect('/admin');
 
+  // Limpiar holds de pago vencidos antes de calcular ingresos — si no, una reserva
+  // sin pagar que ya expiró pero todavía no fue barrida por el lazy-sweep se
+  // contaría como ingreso real hasta que algo más dispare el sweep.
+  await sweepExpiredHolds();
+
   const today      = new Date();
   const thisMonth  = today.toISOString().slice(0, 7);
   const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1);
@@ -31,7 +41,7 @@ export default async function ReportesPage() {
     supabase
       .from('bookings')
       .select(`
-        pax, total_amount,
+        pax, total_amount, credit_applied, status, source, mp_payment_id,
         tour_instances ( tour_slug, date, tours ( name_es ) )
       `)
       .not('status', 'in', '("cancelled","refunded")'),
@@ -57,11 +67,14 @@ export default async function ReportesPage() {
   const tourMonthMap = new Map<string, { tour_name: string; revenue: number; pax: number; count: number }>();
 
   for (const b of bookings) {
+    if (!isBookingPaid(b)) continue;
     const inst = Array.isArray(b.tour_instances) ? b.tour_instances[0] : b.tour_instances;
     if (!inst) continue;
     const tour = Array.isArray(inst.tours) ? inst.tours[0] : inst.tours;
     const month = inst.date.slice(0, 7);
-    const amount = b.total_amount ?? 0;
+    // Ingreso real = lo que efectivamente entró como plata nueva, sin contar la
+    // parte cubierta con crédito (esa plata ya había entrado en una reserva anterior).
+    const amount = (b.total_amount ?? 0) - (b.credit_applied ?? 0);
 
     if (monthlyMap.has(month)) {
       const m = monthlyMap.get(month)!;
