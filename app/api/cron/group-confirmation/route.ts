@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { distributeGroups } from '@/lib/redistribution';
+import { getBasePickupTime, computePickupTimes } from '@/lib/pickup-route';
+import { GroupTourConfirmedEmail } from '@/emails/GroupTourConfirmed';
 import { Resend } from 'resend';
+import { render } from '@react-email/render';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -61,6 +64,7 @@ export async function GET(req: NextRequest) {
         await notifySystemError(tourSlug, tourName, tourDate, result.error ?? 'desconocido');
       } else {
         console.log(`[cron] ${tourSlug} ${tourDate}: confirmado OK (${result.totalPax} pax, ${result.vans} van(s))`);
+        await sendGroupConfirmedEmails(tourSlug, tourName, tourDate);
       }
     } catch (err) {
       console.error(`[cron] excepción procesando ${tourSlug} ${tourDate}:`, err);
@@ -98,6 +102,81 @@ async function notifyMinNotReached(
       <p style="color:#999;font-size:12px">Enviado automáticamente a las 20:00 del día anterior.</p>
     `,
   }).catch(err => console.error('[cron] email admin error:', err));
+}
+
+interface RawPassenger { id: string; name: string; email: string; pickup_address: string | null; is_lead: boolean; }
+interface RawBooking {
+  id: string; booking_code: string; locale: string | null; status: string;
+  passengers: RawPassenger[] | RawPassenger | null;
+}
+interface RawInstance { id: string; bookings: RawBooking[] | RawBooking | null; }
+
+/**
+ * Email a cada pasajero cuando su tour grupal SÍ se confirma (alcanzó el mínimo).
+ * Si hay dirección de TODOS los pasajeros de la van + Google Maps API key + dirección
+ * de depósito configurada, cada uno recibe su hora estimada personalizada; si falta
+ * cualquiera de esos datos, todos reciben el horario base del tour (o un mensaje
+ * genérico si tampoco hay horario base configurado aún).
+ */
+async function sendGroupConfirmedEmails(tourSlug: string, tourName: string, tourDate: string) {
+  const { data: instances } = await supabase
+    .from('tour_instances')
+    .select(`
+      id,
+      bookings ( id, booking_code, locale, status, passengers ( id, name, email, pickup_address, is_lead ) )
+    `)
+    .eq('tour_slug', tourSlug)
+    .eq('date', tourDate)
+    .eq('booking_type', 'group')
+    .eq('status', 'confirmed');
+
+  const allInstances = (instances ?? []) as unknown as RawInstance[];
+  const basePickupTime = await getBasePickupTime(tourSlug, tourDate);
+
+  for (const inst of allInstances) {
+    const bookingsRaw = Array.isArray(inst.bookings) ? inst.bookings : (inst.bookings ? [inst.bookings] : []);
+    const confirmedBookings = bookingsRaw.filter(b => b.status === 'confirmed');
+
+    const allPassengers = confirmedBookings.flatMap(b => {
+      const ps = Array.isArray(b.passengers) ? b.passengers : (b.passengers ? [b.passengers] : []);
+      return ps.map(p => ({ ...p, booking_code: b.booking_code, locale: (b.locale ?? 'es') as 'es' | 'en' | 'pt' }));
+    });
+
+    if (allPassengers.length === 0) continue;
+
+    let times: Map<string, string> | null = null;
+    if (basePickupTime) {
+      const withAddress = allPassengers.filter(p => p.pickup_address);
+      if (withAddress.length === allPassengers.length) {
+        times = await computePickupTimes(
+          basePickupTime,
+          withAddress.map(p => ({ id: p.id, address: p.pickup_address! }))
+        );
+      }
+    }
+
+    for (const p of allPassengers) {
+      const pickupTime = times?.get(p.id) ?? basePickupTime;
+      try {
+        const html = await render(GroupTourConfirmedEmail({
+          bookingCode:   p.booking_code,
+          tourName,
+          tourDate,
+          passengerName: p.name,
+          pickupTime,
+          locale:         p.locale,
+        }));
+        await resend.emails.send({
+          from:    'Turismo CaraCara <reservas@turismocaracara.cl>',
+          to:      p.email,
+          subject: `¡Tu tour está confirmado! — ${p.booking_code}`,
+          html,
+        });
+      } catch (err) {
+        console.error(`[cron] email confirmación grupal error (${p.booking_code}):`, err);
+      }
+    }
+  }
 }
 
 async function notifySystemError(

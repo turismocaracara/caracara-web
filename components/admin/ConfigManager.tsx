@@ -89,6 +89,11 @@ export default function ConfigManager({ rows }: { rows: ConfigRow[] }) {
   const [savingCon, setSavingCon] = useState(false);
   const [savedCon,  setSavedCon]  = useState(false);
 
+  // — Pickup —
+  const [depotAddress, setDepotAddress] = useState(String(parseConfig(rows, 'depot_address', '')));
+  const [savingPickup, setSavingPickup] = useState(false);
+  const [savedPickup,  setSavedPickup]  = useState(false);
+
   // Tipos de cambio (readonly)
   const ratesRow    = rows.find(r => r.key === 'exchange_rates');
   const rates       = (ratesRow?.value ?? {}) as Record<string, number>;
@@ -129,6 +134,14 @@ export default function ConfigManager({ rows }: { rows: ConfigRow[] }) {
     setSavingCon(false);
     setSavedCon(true);
     setTimeout(() => setSavedCon(false), 3000);
+  }
+
+  async function savePickup() {
+    setSavingPickup(true);
+    await patch('depot_address', depotAddress);
+    setSavingPickup(false);
+    setSavedPickup(true);
+    setTimeout(() => setSavedPickup(false), 3000);
   }
 
   return (
@@ -224,6 +237,28 @@ export default function ConfigManager({ rows }: { rows: ConfigRow[] }) {
             value={waNumber}
             onChange={e => setWaNumber(e.target.value)}
             className={inputClass}
+          />
+        </Field>
+      </Section>
+
+      {/* Pickup */}
+      <Section
+        title="Pickup automático"
+        description="Dirección de salida usada para calcular el orden y horario de recogida por pasajero"
+        onSave={savePickup}
+        saving={savingPickup}
+        saved={savedPickup}
+      >
+        <Field
+          label="Dirección de salida (depósito/oficina)"
+          hint="Se usa junto con Google Maps para calcular el orden de recogida y el horario estimado por pasajero. Sin esto (o sin la API key configurada), se envía solo el horario base del tour."
+        >
+          <input
+            type="text"
+            placeholder="Av. Ejemplo 123, La Reina, Santiago"
+            value={depotAddress}
+            onChange={e => setDepotAddress(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full max-w-md"
           />
         </Field>
       </Section>
