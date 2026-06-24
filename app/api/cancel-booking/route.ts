@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { supabase } from '@/lib/supabase';
-import { releaseInstanceCapacity } from '@/lib/booking-engine';
+import { releaseBookingCapacity } from '@/lib/booking-engine';
 import { getRefundPercent, daysBeforeTour } from '@/lib/cancellation';
 import { escapeHtml } from '@/lib/html';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
   const { data: booking, error } = await supabase
     .from('bookings')
     .select(`
-      id, booking_code, cancellation_token, status, total_amount, pax, tour_instance_id,
+      id, booking_code, cancellation_token, status, total_amount, pax,
+      tour_instance_id, secondary_instance_id, secondary_pax,
       tour_instances ( tour_slug, date ),
       clients ( name, email )
     `)
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
     .eq('id', booking.id);
 
   if (booking.tour_instance_id) {
-    await releaseInstanceCapacity(booking.tour_instance_id, booking.pax);
+    await releaseBookingCapacity(booking);
   }
 
   const adminEmail = process.env.ADMIN_EMAIL ?? 'turismocaracara@gmail.com';

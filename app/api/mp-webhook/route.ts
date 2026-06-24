@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { supabase } from '@/lib/supabase';
-import { releaseInstanceCapacity } from '@/lib/booking-engine';
+import { releaseBookingCapacity } from '@/lib/booking-engine';
 import crypto from 'crypto';
 
 const mp = new MercadoPagoConfig({
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   const { data: booking } = await supabase
     .from('bookings')
-    .select('id, booking_type, status, pax, tour_instance_id, credit_id')
+    .select('id, booking_type, status, pax, tour_instance_id, secondary_instance_id, secondary_pax, credit_id')
     .eq('booking_code', externalRef)
     .single();
 
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
     // Pago rechazado/cancelado → liberar el cupo que esta reserva ocupaba en la van
     // (idempotente: si ya estaba cancelada, no se libera dos veces)
     if (bookingStatus === 'cancelled' && booking.status !== 'cancelled' && booking.tour_instance_id) {
-      await releaseInstanceCapacity(booking.tour_instance_id, booking.pax);
+      await releaseBookingCapacity(booking);
     }
 
     // Pago aprobado con crédito aplicado → consumir el crédito recién ahora (no antes,

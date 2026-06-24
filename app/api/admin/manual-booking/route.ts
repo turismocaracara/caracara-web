@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
 
   // Verificar disponibilidad real — sin excepción, ni siquiera para reservas manuales
   const instanceResult = await resolveTourInstance(data.tour_slug, data.tour_date, data.booking_type, data.pax);
-  if (instanceResult.error) {
+  if (!instanceResult.instanceId) {
     return NextResponse.json({ error: instanceResult.error }, { status: 409 });
   }
   const instanceId = instanceResult.instanceId;
@@ -131,7 +131,9 @@ export async function POST(req: NextRequest) {
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
     .insert({
-      tour_instance_id:   instanceId,
+      tour_instance_id:      instanceId,
+      secondary_instance_id: instanceResult.secondaryInstanceId ?? null,
+      secondary_pax:         instanceResult.secondaryPax ?? null,
       client_id:          clientId,
       booking_type:        data.booking_type,
       source:              'manual',
