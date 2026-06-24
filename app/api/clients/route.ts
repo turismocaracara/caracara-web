@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export async function GET(req: NextRequest) {
+  const ip = getClientIp(req);
+  const withinLimit = await checkRateLimit(`clients:${ip}`, 20, 600);
+  if (!withinLimit) {
+    return NextResponse.json({}, { status: 429 });
+  }
+
   const email = req.nextUrl.searchParams.get('email');
   if (!email) return NextResponse.json({}, { status: 400 });
 

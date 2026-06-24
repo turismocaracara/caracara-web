@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { releaseInstanceCapacity } from '@/lib/booking-engine';
 import { getRefundPercent, daysBeforeTour } from '@/lib/cancellation';
 import { escapeHtml } from '@/lib/html';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -11,6 +12,12 @@ interface RawInstance { tour_slug: string; date: string; }
 interface RawClient { name: string; email: string; }
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const withinLimit = await checkRateLimit(`cancel-booking:${ip}`, 15, 600);
+  if (!withinLimit) {
+    return NextResponse.json({ error: 'Demasiadas solicitudes, intenta más tarde' }, { status: 429 });
+  }
+
   const body = await req.json() as { booking_code?: string; token?: string };
   if (!body.booking_code || !body.token) {
     return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 });

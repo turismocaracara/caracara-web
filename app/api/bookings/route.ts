@@ -6,6 +6,7 @@ import { render } from '@react-email/render';
 import { BookingConfirmedEmail } from '@/emails/BookingConfirmed';
 import { NewBookingAdminEmail } from '@/emails/NewBookingAdmin';
 import { resolveTourInstance, generateBookingCode, generateCancellationToken, getPaymentHoldMinutes, isDateBookable } from '@/lib/booking-engine';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -34,6 +35,12 @@ const BookingSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const withinLimit = await checkRateLimit(`bookings:${ip}`, 8, 600);
+  if (!withinLimit) {
+    return NextResponse.json({ error: 'Demasiadas solicitudes, intenta más tarde' }, { status: 429 });
+  }
+
   let body: unknown;
   try {
     body = await req.json();

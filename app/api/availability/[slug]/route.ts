@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { sweepExpiredHolds } from '@/lib/booking-engine';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export type AvailabilityStatus = 'available' | 'forming' | 'full' | 'blocked' | 'past';
 
@@ -47,6 +48,12 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   // validación, una coma o paréntesis en la URL podría inyectar condiciones de filtro.
   if (!/^[a-z0-9-]+$/.test(slug)) {
     return NextResponse.json({ error: 'Tour no encontrado' }, { status: 404 });
+  }
+
+  const ip = getClientIp(req);
+  const withinLimit = await checkRateLimit(`availability:${ip}`, 90, 60);
+  if (!withinLimit) {
+    return NextResponse.json({ error: 'Demasiadas solicitudes, intenta más tarde' }, { status: 429 });
   }
 
   const monthParam = req.nextUrl.searchParams.get('month'); // formato: YYYY-MM
