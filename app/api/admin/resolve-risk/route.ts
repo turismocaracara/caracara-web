@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
+import { releaseInstanceCapacity } from '@/lib/booking-engine';
 
 export async function POST(req: NextRequest) {
   const member = await getCurrentTeamMember();
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
 
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('id, client_id, total_amount, status')
+    .select('id, client_id, total_amount, status, tour_instance_id, pax')
     .eq('id', body.booking_id)
     .single();
 
@@ -51,6 +52,10 @@ export async function POST(req: NextRequest) {
     .eq('id', booking.id);
 
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+
+  if (booking.tour_instance_id) {
+    await releaseInstanceCapacity(booking.tour_instance_id, booking.pax);
+  }
 
   return NextResponse.json({ ok: true, credit_amount: amount });
 }

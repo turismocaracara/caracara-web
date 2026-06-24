@@ -1,4 +1,5 @@
-import { requireAdmin } from '@/lib/admin-auth';
+import { redirect } from 'next/navigation';
+import { requireAdmin, getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 
@@ -43,7 +44,10 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 };
 
 export default async function AdminDashboard() {
-  const user = await requireAdmin();
+  const user   = await requireAdmin();
+  const member = await getCurrentTeamMember();
+  // Ingresos del mes + lista de clientes recientes — no es "tour propio del guía".
+  if (member?.role === 'guide') redirect('/admin/asignaciones');
 
   const today      = new Date().toISOString().slice(0, 10);
   const monthStart = today.slice(0, 7) + '-01';

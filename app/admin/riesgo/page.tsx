@@ -1,10 +1,15 @@
-import { requireAdmin } from '@/lib/admin-auth';
+import { redirect } from 'next/navigation';
+import { requireAdmin, getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import RiesgoManager, { type RiskGroupRow } from '@/components/admin/RiesgoManager';
 
 export default async function RiesgoPage() {
-  const user = await requireAdmin();
+  const user   = await requireAdmin();
+  const member = await getCurrentTeamMember();
+  // Expone email/teléfono de clientes de grupos en riesgo de toda la operación —
+  // no es información que un guía deba ver por defecto.
+  if (member?.role === 'guide') redirect('/admin/asignaciones');
 
   const today = new Date().toISOString().slice(0, 10);
 
