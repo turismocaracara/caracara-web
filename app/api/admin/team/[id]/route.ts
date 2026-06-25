@@ -12,21 +12,31 @@ export async function PATCH(
   }
 
   const body = await req.json() as {
-    role?:        string;
-    permissions?: Record<string, boolean>;
-    active?:      boolean;
+    role?:               string;
+    is_admin_secondary?: boolean;
+    is_guide?:           boolean;
+    permissions?:        Record<string, boolean>;
+    active?:             boolean;
   };
 
-  // Solo un admin puede otorgar el rol admin a otra persona (evita que un
-  // admin_secondary con permiso manage_team se auto-promueva)
-  if (body.role === 'admin' && member?.role !== 'admin') {
-    return NextResponse.json({ error: 'Solo un admin puede asignar el rol admin' }, { status: 403 });
+  // Solo un admin puede otorgar el rol admin (o el permiso de admin secundario,
+  // que abre la puerta a finanzas/clientes) a otra persona — evita que un
+  // admin_secondary con permiso manage_team se auto-promueva.
+  if (member?.role !== 'admin') {
+    if (body.role === 'admin') {
+      return NextResponse.json({ error: 'Solo un admin puede asignar el rol admin' }, { status: 403 });
+    }
+    if (body.is_admin_secondary === true) {
+      return NextResponse.json({ error: 'Solo un admin puede asignar admin secundario' }, { status: 403 });
+    }
   }
 
   const update: Record<string, unknown> = {};
-  if (body.role        !== undefined) update.role        = body.role;
-  if (body.permissions !== undefined) update.permissions = body.permissions;
-  if (body.active      !== undefined) update.active      = body.active;
+  if (body.role               !== undefined) update.role               = body.role;
+  if (body.is_admin_secondary !== undefined) update.is_admin_secondary = body.is_admin_secondary;
+  if (body.is_guide           !== undefined) update.is_guide           = body.is_guide;
+  if (body.permissions        !== undefined) update.permissions        = body.permissions;
+  if (body.active             !== undefined) update.active             = body.active;
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'Nada que actualizar' }, { status: 400 });

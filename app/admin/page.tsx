@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { requireAdmin, getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import { isBookingPaid, sweepExpiredHolds } from '@/lib/booking-engine';
+import { isOpsViewer } from '@/lib/admin-auth';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 
 interface TodayInstance {
@@ -48,7 +49,7 @@ export default async function AdminDashboard() {
   const user   = await requireAdmin();
   const member = await getCurrentTeamMember();
   // Ingresos del mes + lista de clientes recientes — no es "tour propio del guía".
-  if (member?.role === 'guide') redirect('/admin/asignaciones');
+  if (!isOpsViewer(member)) redirect('/admin/asignaciones');
 
   // Sin esto, un hold de pago vencido pero todavía no barrido por el lazy-sweep
   // se contaría como ingreso real en el KPI del mes.

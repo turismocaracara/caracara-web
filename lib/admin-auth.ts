@@ -20,14 +20,21 @@ export async function requireAdmin() {
 }
 
 export interface TeamMemberInfo {
-  id:          string;
-  name:        string;
-  email:       string | null;
-  role:        'admin' | 'admin_secondary' | 'guide';
-  permissions: Record<string, boolean>;
+  id:                 string;
+  name:               string;
+  email:              string | null;
+  role:               'admin' | 'admin_secondary' | 'guide';
+  is_admin_secondary: boolean;
+  is_guide:           boolean;
+  permissions:        Record<string, boolean>;
 }
 
-/** Busca el team_member asociado al usuario autenticado actual (por email). */
+/**
+ * Admin secundario y guía no son excluyentes — alguien puede ser ambos a la vez
+ * (ej. tiene permisos de oficina Y también sale a guiar tours puntuales). Por eso
+ * viven en columnas booleanas independientes, no en el viejo `role` (que solo
+ * sigue significando algo para 'admin', el rol superior y excluyente).
+ */
 export async function getCurrentTeamMember(): Promise<TeamMemberInfo | null> {
   const client = createSupabaseServerClient();
   const { data: { user } } = await client.auth.getUser();
@@ -35,12 +42,17 @@ export async function getCurrentTeamMember(): Promise<TeamMemberInfo | null> {
 
   const { data } = await supabase
     .from('team_members')
-    .select('id, name, email, role, permissions')
+    .select('id, name, email, role, is_admin_secondary, is_guide, permissions')
     .eq('email', user.email)
     .eq('active', true)
     .maybeSingle();
 
   return data as TeamMemberInfo | null;
+}
+
+/** Ve finanzas/clientes/operación general — admin, o admin secundario (con o sin el flag de guía también). */
+export function isOpsViewer(member: TeamMemberInfo | null): boolean {
+  return member?.role === 'admin' || !!member?.is_admin_secondary;
 }
 
 /** Admin tiene todos los permisos implícitamente; admin_secondary solo los listados en permissions. */

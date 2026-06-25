@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { requireAdmin, getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
+import { requireAdmin, getCurrentTeamMember, hasPermission, isOpsViewer } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import ReservasTable from '@/components/admin/ReservasTable';
@@ -29,7 +29,7 @@ export default async function ReservasPage({
   const member = await getCurrentTeamMember();
   // Lista completa de clientes con email/teléfono — no es "tour propio", así que
   // los guías (sin permisos extra por defecto) no deben verla.
-  if (member?.role === 'guide') redirect('/admin/asignaciones');
+  if (!isOpsViewer(member)) redirect('/admin/asignaciones');
   const canCreateManual = hasPermission(member, 'manual_booking');
 
   let query = supabase

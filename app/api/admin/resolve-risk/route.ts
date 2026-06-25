@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentTeamMember } from '@/lib/admin-auth';
+import { getCurrentTeamMember, isOpsViewer } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 import { releaseBookingCapacity } from '@/lib/booking-engine';
 
 export async function POST(req: NextRequest) {
   const member = await getCurrentTeamMember();
-  if (!member || member.role === 'guide') {
+  if (!isOpsViewer(member)) {
     return NextResponse.json({ error: 'No tienes permiso para esta acción' }, { status: 403 });
   }
 

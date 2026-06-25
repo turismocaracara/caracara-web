@@ -11,7 +11,7 @@ export default async function EquipoPage() {
 
   const { data, error } = await supabase
     .from('team_members')
-    .select('id, name, email, role, permissions, active, created_at')
+    .select('id, name, email, role, is_admin_secondary, is_guide, permissions, active, created_at')
     .order('created_at');
 
   const members: TeamMemberRow[] = (data ?? []) as TeamMemberRow[];

@@ -7,16 +7,12 @@ export interface TeamMemberRow {
   name: string;
   email: string | null;
   role: 'admin' | 'admin_secondary' | 'guide';
+  is_admin_secondary: boolean;
+  is_guide: boolean;
   permissions: Record<string, boolean>;
   active: boolean;
   created_at: string;
 }
-
-const ROLE_LABELS: Record<string, { label: string; cls: string }> = {
-  admin:           { label: 'Admin',           cls: 'bg-purple-50 text-purple-700 border-purple-200' },
-  admin_secondary: { label: 'Admin secundario', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
-  guide:           { label: 'Guía / Conductor', cls: 'bg-teal/10 text-teal border-teal/20' },
-};
 
 const PERMISSIONS = [
   { key: 'manual_booking',  label: 'Reservas manuales',  desc: 'Crear reservas sin aprobación' },
@@ -32,12 +28,82 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function RoleBadge({ role }: { role: string }) {
-  const r = ROLE_LABELS[role] ?? { label: role, cls: 'bg-gray-50 text-gray-600 border-gray-200' };
+// Admin secundario y guía no son excluyentes — alguien puede tener ambos a la vez
+// (ej. lleva la oficina con ciertos permisos Y también sale a guiar tours puntuales).
+function RoleBadges({ member }: { member: { role: string; is_admin_secondary: boolean; is_guide: boolean } }) {
+  if (member.role === 'admin') {
+    return (
+      <span className="text-xs font-medium px-2.5 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200">
+        Admin
+      </span>
+    );
+  }
   return (
-    <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full border ${r.cls}`}>
-      {r.label}
-    </span>
+    <div className="flex gap-1.5">
+      {member.is_admin_secondary && (
+        <span className="text-xs font-medium px-2.5 py-0.5 rounded-full border bg-blue-50 text-blue-700 border-blue-200">
+          Admin secundario
+        </span>
+      )}
+      {member.is_guide && (
+        <span className="text-xs font-medium px-2.5 py-0.5 rounded-full border bg-teal/10 text-teal border-teal/20">
+          Guía / Conductor
+        </span>
+      )}
+      {!member.is_admin_secondary && !member.is_guide && (
+        <span className="text-xs font-medium px-2.5 py-0.5 rounded-full border bg-gray-50 text-gray-500 border-gray-200">
+          Sin rol asignado
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── Selector de rol (Admin | Admin secundario / Guía combinables) ───────────
+function RoleSelector({
+  isAdmin, isAdminSecondary, isGuide,
+  onChange,
+}: {
+  isAdmin: boolean;
+  isAdminSecondary: boolean;
+  isGuide: boolean;
+  onChange: (next: { isAdmin: boolean; isAdminSecondary: boolean; isGuide: boolean }) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-xs font-medium text-gray-500">Rol</label>
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={isAdmin}
+          onChange={() => onChange({ isAdmin: !isAdmin, isAdminSecondary, isGuide })}
+          className="accent-teal"
+        />
+        Admin (acceso total)
+      </label>
+      {!isAdmin && (
+        <div className="flex flex-col gap-1.5 pl-1">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={isAdminSecondary}
+              onChange={() => onChange({ isAdmin, isAdminSecondary: !isAdminSecondary, isGuide })}
+              className="accent-teal"
+            />
+            Admin secundario — permisos configurables
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={isGuide}
+              onChange={() => onChange({ isAdmin, isAdminSecondary, isGuide: !isGuide })}
+              className="accent-teal"
+            />
+            Guía / Conductor — sin permisos, solo ve sus tours asignados
+          </label>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -53,24 +119,37 @@ function MemberRow({
   onUpdate: (id: string, patch: Partial<TeamMemberRow>) => void;
   onDelete: (id: string) => void;
 }) {
-  const [expanded,  setExpanded]  = useState(false);
-  const [saving,    setSaving]    = useState(false);
-  const [role,      setRole]      = useState(member.role);
-  const [perms,     setPerms]     = useState<Record<string, boolean>>(member.permissions ?? {});
-  const [active,    setActive]    = useState(member.active);
-  const [deleting,  setDeleting]  = useState(false);
+  const [expanded,         setExpanded]         = useState(false);
+  const [saving,           setSaving]           = useState(false);
+  const [isAdmin,          setIsAdmin]          = useState(member.role === 'admin');
+  const [isAdminSecondary, setIsAdminSecondary] = useState(member.is_admin_secondary);
+  const [isGuide,          setIsGuide]          = useState(member.is_guide);
+  const [perms,            setPerms]            = useState<Record<string, boolean>>(member.permissions ?? {});
+  const [active,           setActive]           = useState(member.active);
+  const [deleting,         setDeleting]         = useState(false);
 
   const isDirty =
-    role   !== member.role   ||
-    active !== member.active ||
+    isAdmin          !== (member.role === 'admin') ||
+    isAdminSecondary !== member.is_admin_secondary ||
+    isGuide          !== member.is_guide           ||
+    active           !== member.active             ||
     JSON.stringify(perms) !== JSON.stringify(member.permissions ?? {});
+
+  function handleRoleChange(next: { isAdmin: boolean; isAdminSecondary: boolean; isGuide: boolean }) {
+    setIsAdmin(next.isAdmin);
+    setIsAdminSecondary(next.isAdmin ? false : next.isAdminSecondary);
+    setIsGuide(next.isAdmin ? false : next.isGuide);
+  }
 
   async function save() {
     setSaving(true);
     try {
+      const role = isAdmin ? 'admin' : isAdminSecondary ? 'admin_secondary' : 'guide';
       const patch: Record<string, unknown> = {};
-      if (role   !== member.role)   patch.role   = role;
-      if (active !== member.active) patch.active  = active;
+      if (role             !== member.role)             patch.role               = role;
+      if (isAdminSecondary !== member.is_admin_secondary) patch.is_admin_secondary = isAdminSecondary;
+      if (isGuide          !== member.is_guide)           patch.is_guide           = isGuide;
+      if (active           !== member.active)             patch.active             = active;
       if (JSON.stringify(perms) !== JSON.stringify(member.permissions ?? {})) patch.permissions = perms;
 
       const res = await fetch(`/api/admin/team/${member.id}`, {
@@ -78,7 +157,15 @@ function MemberRow({
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(patch),
       });
-      if (res.ok) onUpdate(member.id, { role, active, permissions: perms });
+      if (res.ok) {
+        onUpdate(member.id, {
+          role: role as TeamMemberRow['role'],
+          is_admin_secondary: isAdminSecondary,
+          is_guide: isGuide,
+          active,
+          permissions: perms,
+        });
+      }
     } finally {
       setSaving(false);
     }
@@ -111,7 +198,7 @@ function MemberRow({
           </p>
         </div>
 
-        <RoleBadge role={member.role} />
+        <RoleBadges member={member} />
 
         {/* Toggle activo */}
         <button
@@ -144,22 +231,15 @@ function MemberRow({
       {/* Panel de edición */}
       {expanded && (
         <div className="bg-gray-50/60 px-4 py-4 flex flex-col gap-4 border-t border-gray-100">
-          {/* Rol */}
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Rol</label>
-            <select
-              value={role}
-              onChange={e => setRole(e.target.value as TeamMemberRow['role'])}
-              className="w-48 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal bg-white"
-            >
-              <option value="admin">Admin</option>
-              <option value="admin_secondary">Admin secundario</option>
-              <option value="guide">Guía / Conductor</option>
-            </select>
-          </div>
+          <RoleSelector
+            isAdmin={isAdmin}
+            isAdminSecondary={isAdminSecondary}
+            isGuide={isGuide}
+            onChange={handleRoleChange}
+          />
 
-          {/* Permisos — solo para admin_secondary */}
-          {role === 'admin_secondary' && (
+          {/* Permisos — solo si tiene el flag de admin secundario */}
+          {isAdminSecondary && (
             <div className="flex flex-col gap-2">
               <label className="text-xs font-medium text-gray-500">Permisos</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -213,22 +293,36 @@ function MemberRow({
 
 // ── Formulario de invite ─────────────────────────────────────────────────────
 function InviteForm({ onInvited }: { onInvited: (m: TeamMemberRow) => void }) {
-  const [email,  setEmail]  = useState('');
-  const [name,   setName]   = useState('');
-  const [role,   setRole]   = useState<TeamMemberRow['role']>('guide');
-  const [saving, setSaving] = useState(false);
-  const [error,  setError]  = useState('');
-  const [done,   setDone]   = useState(false);
+  const [email,            setEmail]            = useState('');
+  const [name,             setName]             = useState('');
+  const [isAdmin,          setIsAdmin]          = useState(false);
+  const [isAdminSecondary, setIsAdminSecondary] = useState(false);
+  const [isGuide,          setIsGuide]          = useState(true);
+  const [saving,           setSaving]           = useState(false);
+  const [error,            setError]            = useState('');
+  const [done,             setDone]             = useState(false);
+
+  function handleRoleChange(next: { isAdmin: boolean; isAdminSecondary: boolean; isGuide: boolean }) {
+    setIsAdmin(next.isAdmin);
+    setIsAdminSecondary(next.isAdmin ? false : next.isAdminSecondary);
+    setIsGuide(next.isAdmin ? false : next.isGuide);
+  }
 
   async function submit() {
     if (!email || !name) return;
     setSaving(true);
     setError('');
     try {
+      const role = isAdmin ? 'admin' : isAdminSecondary ? 'admin_secondary' : 'guide';
       const res = await fetch('/api/admin/team', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ email, name, role, permissions: {} }),
+        body:    JSON.stringify({
+          email, name, role,
+          is_admin_secondary: isAdminSecondary,
+          is_guide: isGuide,
+          permissions: {},
+        }),
       });
       const data = await res.json() as { ok?: boolean; id?: string; error?: string };
       if (!res.ok) { setError(data.error ?? 'Error'); return; }
@@ -236,12 +330,14 @@ function InviteForm({ onInvited }: { onInvited: (m: TeamMemberRow) => void }) {
         id:          data.id!,
         name,
         email,
-        role,
+        role:        role as TeamMemberRow['role'],
+        is_admin_secondary: isAdminSecondary,
+        is_guide:    isGuide,
         permissions: {},
         active:      true,
         created_at:  new Date().toISOString(),
       });
-      setEmail(''); setName(''); setRole('guide');
+      setEmail(''); setName(''); setIsAdmin(false); setIsAdminSecondary(false); setIsGuide(true);
       setDone(true);
       setTimeout(() => setDone(false), 4000);
     } finally {
@@ -252,7 +348,7 @@ function InviteForm({ onInvited }: { onInvited: (m: TeamMemberRow) => void }) {
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4">
       <h3 className="text-sm font-semibold text-gray-700">Invitar nuevo miembro</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-gray-500">Nombre</label>
           <input
@@ -273,19 +369,15 @@ function InviteForm({ onInvited }: { onInvited: (m: TeamMemberRow) => void }) {
             className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal"
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-gray-500">Rol</label>
-          <select
-            value={role}
-            onChange={e => setRole(e.target.value as TeamMemberRow['role'])}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal bg-white"
-          >
-            <option value="guide">Guía / Conductor</option>
-            <option value="admin_secondary">Admin secundario</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
       </div>
+
+      <RoleSelector
+        isAdmin={isAdmin}
+        isAdminSecondary={isAdminSecondary}
+        isGuide={isGuide}
+        onChange={handleRoleChange}
+      />
+
       {error && <p className="text-xs text-red-600">{error}</p>}
       {done  && (
         <p className="text-xs text-teal font-medium">
@@ -326,8 +418,13 @@ export default function EquipoManager({
     setMembers(prev => [...prev, m]);
   }
 
-  const roleOrder = { admin: 0, admin_secondary: 1, guide: 2 };
-  const sorted = [...members].sort((a, b) => (roleOrder[a.role] ?? 3) - (roleOrder[b.role] ?? 3));
+  function rank(m: TeamMemberRow) {
+    if (m.role === 'admin') return 0;
+    if (m.is_admin_secondary) return 1;
+    if (m.is_guide) return 2;
+    return 3;
+  }
+  const sorted = [...members].sort((a, b) => rank(a) - rank(b));
 
   return (
     <div className="flex flex-col gap-8">

@@ -35,10 +35,12 @@ export default function AsignacionesManager({
   instances,
   guides,
   initialAssignments,
+  readOnly = false,
 }: {
   instances: InstanceRow[];
   guides: GuideOption[];
   initialAssignments: AssignmentRow[];
+  readOnly?: boolean;
 }) {
   const [assignments, setAssignments] = useState<Record<string, string>>(
     Object.fromEntries(initialAssignments.map(a => [a.tour_instance_id, a.team_member_id]))
@@ -111,17 +113,21 @@ export default function AsignacionesManager({
                     <td className="px-4 py-3 text-gray-500 text-xs">{TYPE_LABEL[inst.booking_type] ?? inst.booking_type}</td>
                     <td className="px-4 py-3 text-center text-gray-700">{inst.current_pax}</td>
                     <td className="px-4 py-3">
-                      <select
-                        value={assignments[inst.id] ?? ''}
-                        onChange={e => assign(inst.id, e.target.value)}
-                        disabled={saving === inst.id}
-                        className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-teal bg-white disabled:opacity-50 min-w-[160px]"
-                      >
-                        <option value="">— Sin asignar —</option>
-                        {guides.map(g => (
-                          <option key={g.id} value={g.id}>{g.name}</option>
-                        ))}
-                      </select>
+                      {readOnly ? (
+                        <span className="text-xs font-medium text-teal">✓ Asignado a ti</span>
+                      ) : (
+                        <select
+                          value={assignments[inst.id] ?? ''}
+                          onChange={e => assign(inst.id, e.target.value)}
+                          disabled={saving === inst.id}
+                          className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-teal bg-white disabled:opacity-50 min-w-[160px]"
+                        >
+                          <option value="">— Sin asignar —</option>
+                          {guides.map(g => (
+                            <option key={g.id} value={g.id}>{g.name}</option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                   </tr>
                 ))}
