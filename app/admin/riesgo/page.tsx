@@ -19,17 +19,22 @@ export default async function RiesgoPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data, error } = await supabase
-    .from('tour_instances')
-    .select(`
-      id, date,
-      tours ( name_es, group_min_pax ),
-      bookings!tour_instance_id ( id, pax, status, source, mp_payment_id, credit_applied, client_id, clients ( name, email, phone ) )
-    `)
-    .eq('booking_type', 'group')
-    .eq('status', 'forming')
-    .gte('date', today)
-    .order('date');
+  const [{ data, error }, toursRes] = await Promise.all([
+    supabase
+      .from('tour_instances')
+      .select(`
+        id, date, tour_slug,
+        tours ( name_es, group_min_pax ),
+        bookings!tour_instance_id ( id, pax, status, source, mp_payment_id, credit_applied, client_id, clients ( name, email, phone ) )
+      `)
+      .eq('booking_type', 'group')
+      .eq('status', 'forming')
+      .gte('date', today)
+      .order('date'),
+    supabase.from('tours').select('slug, name_es').eq('active', true).order('name_es'),
+  ]);
+
+  const tours = (toursRes.data ?? []) as { slug: string; name_es: string }[];
 
   interface RawBooking {
     id: string;
@@ -43,6 +48,7 @@ export default async function RiesgoPage() {
   interface RawInstance {
     id: string;
     date: string;
+    tour_slug: string;
     tours: { name_es: string; group_min_pax: number } | { name_es: string; group_min_pax: number }[] | null;
     bookings: RawBooking | RawBooking[] | null;
   }
@@ -73,6 +79,7 @@ export default async function RiesgoPage() {
 
       return {
         instance_id: inst.id as string,
+        tour_slug:   inst.tour_slug as string,
         tour_name:   (tour?.name_es ?? 'Tour') as string,
         date:        inst.date as string,
         min_pax:     (tour?.group_min_pax ?? 4) as number,
@@ -95,7 +102,7 @@ export default async function RiesgoPage() {
           </p>
         </div>
 
-        <RiesgoManager groups={groups} />
+        <RiesgoManager groups={groups} tours={tours} />
       </main>
     </div>
   );

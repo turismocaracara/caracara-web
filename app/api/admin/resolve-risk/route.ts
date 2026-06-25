@@ -9,10 +9,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No tienes permiso para esta acción' }, { status: 403 });
   }
 
-  const body = await req.json() as { booking_id: string };
+  const body = await req.json() as { booking_id: string; action?: 'credit' | 'refund' };
   if (!body.booking_id) {
     return NextResponse.json({ error: 'booking_id requerido' }, { status: 400 });
   }
+  const action = body.action ?? 'credit';
 
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
@@ -30,16 +31,22 @@ export async function POST(req: NextRequest) {
 
   const amount = booking.total_amount ?? 0;
 
-  const { error: creditError } = await supabase
-    .from('client_credits')
-    .insert({
-      client_id:  booking.client_id,
-      amount_clp: amount,
-      reason:     'min_not_reached',
-    });
+  if (action === 'credit') {
+    const { error: creditError } = await supabase
+      .from('client_credits')
+      .insert({
+        client_id:  booking.client_id,
+        amount_clp: amount,
+        reason:     'min_not_reached',
+      });
 
-  if (creditError) return NextResponse.json({ error: creditError.message }, { status: 500 });
+    if (creditError) return NextResponse.json({ error: creditError.message }, { status: 500 });
+  }
 
+  // La devolución no se marca 'approved' aca mismo -- entra a la misma cola de
+  // /admin/devoluciones (pending_approval) que ya usan las cancelaciones de
+  // cliente, para mantener un solo lugar donde se aprueba y se procesa el
+  // reembolso real en MercadoPago.
   const { error: updateError } = await supabase
     .from('bookings')
     .update({
@@ -47,7 +54,8 @@ export async function POST(req: NextRequest) {
       cancelled_at:        new Date().toISOString(),
       cancellation_reason: 'min_not_reached',
       cancellation_by:     'admin',
-      refund_status:       'credit_issued',
+      refund_amount:       action === 'refund' ? amount : 0,
+      refund_status:       action === 'refund' ? 'pending_approval' : 'credit_issued',
     })
     .eq('id', booking.id);
 
@@ -57,5 +65,5 @@ export async function POST(req: NextRequest) {
     await releaseBookingCapacity(booking);
   }
 
-  return NextResponse.json({ ok: true, credit_amount: amount });
+  return NextResponse.json({ ok: true, amount });
 }
