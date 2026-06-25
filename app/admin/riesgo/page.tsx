@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { requireAdmin, getCurrentTeamMember, isOpsViewer } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
+import { isBookingPaid, sweepExpiredHolds } from '@/lib/booking-engine';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import RiesgoManager, { type RiskGroupRow } from '@/components/admin/RiesgoManager';
 
@@ -11,6 +12,11 @@ export default async function RiesgoPage() {
   // no es información que un guía deba ver por defecto.
   if (!isOpsViewer(member)) redirect('/admin/asignaciones');
 
+  // Sin esto, una reserva con el hold de pago vencido pero todavía no barrida
+  // por el lazy-sweep podía mostrarse aquí como "sin pagar todavía" en vez de
+  // ya estar cancelada (igual que en el dashboard y reportes).
+  await sweepExpiredHolds();
+
   const today = new Date().toISOString().slice(0, 10);
 
   const { data, error } = await supabase
@@ -18,7 +24,7 @@ export default async function RiesgoPage() {
     .select(`
       id, date,
       tours ( name_es, group_min_pax ),
-      bookings!tour_instance_id ( id, pax, status, client_id, clients ( name, email, phone ) )
+      bookings!tour_instance_id ( id, pax, status, source, mp_payment_id, credit_applied, client_id, clients ( name, email, phone ) )
     `)
     .eq('booking_type', 'group')
     .eq('status', 'forming')
@@ -29,6 +35,9 @@ export default async function RiesgoPage() {
     id: string;
     pax: number;
     status: string;
+    source: string | null;
+    mp_payment_id: string | null;
+    credit_applied: number | null;
     clients: { name: string; email: string; phone: string | null } | { name: string; email: string; phone: string | null }[] | null;
   }
   interface RawInstance {
@@ -56,15 +65,23 @@ export default async function RiesgoPage() {
           };
         });
 
+      // Solo cuenta para el mínimo lo que el cron de confirmación también cuenta
+      // (pago confirmado, crédito aplicado, o reserva manual) — una reserva
+      // 'waiting_min' sin pagar todavía puede evaporarse, así que no basta con
+      // que la suma de pax nominal ya alcance el mínimo.
+      const paidPax = bookingsRaw.filter(isBookingPaid).reduce((sum, b) => sum + b.pax, 0);
+
       return {
         instance_id: inst.id as string,
         tour_name:   (tour?.name_es ?? 'Tour') as string,
         date:        inst.date as string,
         min_pax:     (tour?.group_min_pax ?? 4) as number,
+        paidPax,
         bookings,
       };
     })
-    .filter(g => g.bookings.length > 0);
+    .filter(g => g.bookings.length > 0 && g.paidPax < g.min_pax)
+    .map(({ paidPax, ...g }) => g);
 
   return (
     <div className="flex min-h-screen">
