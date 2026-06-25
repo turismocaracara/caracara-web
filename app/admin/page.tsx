@@ -66,7 +66,7 @@ export default async function AdminDashboard() {
       .select(`
         id, tour_slug, date, booking_type, current_pax, status,
         tours ( name_es ),
-        bookings ( id, booking_code, pax, status )
+        bookings!tour_instance_id ( id, booking_code, pax, status )
       `)
       .eq('date', today)
       .neq('status', 'cancelled'),
@@ -76,7 +76,7 @@ export default async function AdminDashboard() {
       .from('bookings')
       .select(`
         id, booking_code, booking_type, pax, status, total_amount, created_at,
-        tour_instances ( tour_slug, date, tours ( name_es ) ),
+        tour_instances!tour_instance_id ( tour_slug, date, tours ( name_es ) ),
         clients ( name )
       `)
       .order('created_at', { ascending: false })

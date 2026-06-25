@@ -24,7 +24,7 @@ export default async function DevolucionesPage() {
     .from('bookings')
     .select(`
       id, booking_code, total_amount, refund_amount, refund_status, cancelled_at,
-      tour_instances ( tours ( name_es ) ),
+      tour_instances!tour_instance_id ( tours ( name_es ) ),
       clients ( name, email )
     `)
     .in('refund_status', ['pending_approval', 'approved'])

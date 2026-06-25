@@ -83,7 +83,7 @@ export default async function ReservaPage({ params, searchParams }: Props) {
     .from('bookings')
     .select(`
       booking_code, booking_type, pax, status, mp_preference_id, cancellation_token, total_amount,
-      tour_instances!inner ( date, tour_slug ),
+      tour_instances!tour_instance_id!inner ( date, tour_slug ),
       clients!inner ( name, email )
     `)
     .eq('booking_code', params.code.toUpperCase())

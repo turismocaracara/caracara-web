@@ -123,7 +123,7 @@ async function sendGroupConfirmedEmails(tourSlug: string, tourName: string, tour
     .from('tour_instances')
     .select(`
       id,
-      bookings ( id, booking_code, locale, status, passengers ( id, name, email, pickup_address, is_lead ) )
+      bookings!tour_instance_id ( id, booking_code, locale, status, passengers ( id, name, email, pickup_address, is_lead ) )
     `)
     .eq('tour_slug', tourSlug)
     .eq('date', tourDate)

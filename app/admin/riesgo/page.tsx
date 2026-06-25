@@ -18,7 +18,7 @@ export default async function RiesgoPage() {
     .select(`
       id, date,
       tours ( name_es, group_min_pax ),
-      bookings ( id, pax, status, client_id, clients ( name, email, phone ) )
+      bookings!tour_instance_id ( id, pax, status, client_id, clients ( name, email, phone ) )
     `)
     .eq('booking_type', 'group')
     .eq('status', 'forming')

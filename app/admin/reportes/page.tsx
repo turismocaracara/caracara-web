@@ -42,7 +42,7 @@ export default async function ReportesPage() {
       .from('bookings')
       .select(`
         pax, total_amount, credit_applied, status, source, mp_payment_id,
-        tour_instances ( tour_slug, date, tours ( name_es ) )
+        tour_instances!tour_instance_id ( tour_slug, date, tours ( name_es ) )
       `)
       .not('status', 'in', '("cancelled","refunded")'),
     supabase.from('tour_cost_items').select('id, tour_slug, concept, amount_clp, unit').order('tour_slug'),

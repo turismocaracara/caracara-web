@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     .select(`
       id, booking_code, cancellation_token, status, total_amount, pax,
       tour_instance_id, secondary_instance_id, secondary_pax,
-      tour_instances ( tour_slug, date ),
+      tour_instances!tour_instance_id ( tour_slug, date ),
       clients ( name, email )
     `)
     .eq('booking_code', body.booking_code.toUpperCase())

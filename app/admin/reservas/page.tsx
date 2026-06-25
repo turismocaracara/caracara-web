@@ -36,7 +36,7 @@ export default async function ReservasPage({
     .from('bookings')
     .select(`
       id, booking_code, booking_type, pax, status, total_amount, locale, created_at,
-      tour_instances ( tour_slug, date, tours ( name_es ) ),
+      tour_instances!tour_instance_id ( tour_slug, date, tours ( name_es ) ),
       clients ( name, email, phone )
     `)
     .order('created_at', { ascending: false })

@@ -264,7 +264,7 @@ async function tryRebalanceGroupInstances(
 ): Promise<{ instanceId: string } | null> {
   const { data: instances } = await supabase
     .from('tour_instances')
-    .select('id, bookings ( id, pax, status, secondary_instance_id )')
+    .select('id, bookings!tour_instance_id ( id, pax, status, secondary_instance_id )')
     .eq('tour_slug', tourSlug)
     .eq('date', tourDate)
     .eq('booking_type', 'group')

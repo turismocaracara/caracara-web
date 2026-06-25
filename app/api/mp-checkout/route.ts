@@ -42,7 +42,7 @@ async function handleCheckout(req: NextRequest, body: unknown) {
     .from('bookings')
     .select(`
       id, booking_code, booking_type, pax, locale, status, client_id, mp_preference_id, cancellation_token,
-      tour_instances!inner ( tour_slug, date ),
+      tour_instances!tour_instance_id!inner ( tour_slug, date ),
       clients!inner ( name, email )
     `)
     .eq('id', booking_id)
