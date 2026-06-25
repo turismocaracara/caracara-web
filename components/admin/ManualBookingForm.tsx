@@ -10,17 +10,24 @@ export interface AdminTourOption {
 }
 
 interface PassengerData {
-  name:      string;
-  id_type:   'rut' | 'passport';
-  id_number: string;
-  email:     string;
-  phone:     string;
-  country:   string;
+  name:       string;
+  id_type:    'rut' | 'passport';
+  id_number:  string;
+  email:      string;
+  phone:      string;
+  country:    string;
+  birth_date: string;
 }
 
 function emptyPassenger(): PassengerData {
-  return { name: '', id_type: 'passport', id_number: '', email: '', phone: '', country: '' };
+  return { name: '', id_type: 'passport', id_number: '', email: '', phone: '', country: '', birth_date: '' };
 }
+
+const TOUR_LANGUAGES: { code: 'es' | 'en' | 'pt'; label: string }[] = [
+  { code: 'es', label: 'Español' },
+  { code: 'en', label: 'Inglés' },
+  { code: 'pt', label: 'Portugués' },
+];
 
 const inputClass  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full';
 const selectClass = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full bg-white';
@@ -45,7 +52,12 @@ export default function ManualBookingForm({ tours }: { tours: AdminTourOption[] 
   const [availableSpots, setAvailableSpots] = useState(18);
   const [pax, setPax]                 = useState(1);
   const [passengers, setPassengers]   = useState<PassengerData[]>([emptyPassenger()]);
+  const [tourLanguages, setTourLanguages] = useState<('es' | 'en' | 'pt')[]>(['es']);
   const [notes, setNotes]             = useState('');
+
+  function toggleTourLanguage(code: 'es' | 'en' | 'pt') {
+    setTourLanguages(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
+  }
   const [totalAmount, setTotalAmount] = useState('');
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState('');
@@ -76,13 +88,11 @@ export default function ManualBookingForm({ tours }: { tours: AdminTourOption[] 
 
   function formValid(): boolean {
     if (!tourSlug || !tourDate || paxExceedsSpots) return false;
-    return passengers.every(p =>
-      p.name.trim().length >= 2 &&
-      p.id_number.trim().length >= 3 &&
-      p.email.includes('@') &&
-      p.phone.trim().length >= 6 &&
-      p.country.trim().length >= 2
-    );
+    return passengers.every((p, i) => {
+      const basicsOk = p.name.trim().length >= 2 && p.id_number.trim().length >= 3;
+      if (i !== 0) return basicsOk;
+      return basicsOk && p.email.includes('@') && p.phone.trim().length >= 6 && p.country.trim().length >= 2;
+    });
   }
 
   async function handleSubmit() {
@@ -97,7 +107,11 @@ export default function ManualBookingForm({ tours }: { tours: AdminTourOption[] 
           tour_date:    tourDate,
           booking_type: bookingType,
           pax,
-          passengers:   passengers.map((p, i) => ({ ...p, is_lead: i === 0 })),
+          passengers: passengers.map((p, i) => i === 0
+            ? { ...p, is_lead: true }
+            : { name: p.name, id_type: p.id_type, id_number: p.id_number, is_lead: false }
+          ),
+          tour_languages: tourLanguages,
           locale:       'es',
           notes:        notes || undefined,
           total_amount: totalAmount ? Number(totalAmount) : undefined,
@@ -214,6 +228,7 @@ export default function ManualBookingForm({ tours }: { tours: AdminTourOption[] 
         {passengers.map((p, i) => (
           <div key={i} className="border border-gray-100 rounded-xl p-4 flex flex-col gap-3 bg-gray-50/50">
             <p className="text-xs font-semibold text-teal">{i === 0 ? 'Pasajero líder (contacto)' : `Pasajero ${i + 1}`}</p>
+            {i > 0 && <p className="text-xs text-gray-400">Solo se necesita su nombre y documento.</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field label="Nombre completo" required>
                 <input value={p.name} onChange={e => updatePassenger(i, 'name', e.target.value)} className={inputClass} />
@@ -227,16 +242,41 @@ export default function ManualBookingForm({ tours }: { tours: AdminTourOption[] 
               <Field label="Número de documento" required>
                 <input value={p.id_number} onChange={e => updatePassenger(i, 'id_number', e.target.value)} className={inputClass} />
               </Field>
-              <Field label="País de origen" required>
-                <input value={p.country} onChange={e => updatePassenger(i, 'country', e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Email" required>
-                <input type="email" value={p.email} onChange={e => updatePassenger(i, 'email', e.target.value)} className={inputClass} />
-              </Field>
-              <Field label="Teléfono" required>
-                <input type="tel" value={p.phone} onChange={e => updatePassenger(i, 'phone', e.target.value)} className={inputClass} />
-              </Field>
+              {i === 0 && (
+                <>
+                  <Field label="País de origen" required>
+                    <input value={p.country} onChange={e => updatePassenger(i, 'country', e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Fecha de nacimiento" required>
+                    <input type="date" value={p.birth_date} onChange={e => updatePassenger(i, 'birth_date', e.target.value)} max={new Date().toISOString().slice(0, 10)} className={inputClass} />
+                  </Field>
+                  <Field label="Email" required>
+                    <input type="email" value={p.email} onChange={e => updatePassenger(i, 'email', e.target.value)} className={inputClass} />
+                  </Field>
+                  <Field label="Teléfono" required>
+                    <input type="tel" value={p.phone} onChange={e => updatePassenger(i, 'phone', e.target.value)} className={inputClass} />
+                  </Field>
+                </>
+              )}
             </div>
+            {i === 0 && (
+              <Field label="Idioma(s) del tour">
+                <div className="flex gap-2 flex-wrap">
+                  {TOUR_LANGUAGES.map(lang => (
+                    <button
+                      key={lang.code}
+                      type="button"
+                      onClick={() => toggleTourLanguage(lang.code)}
+                      className={`border-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                        tourLanguages.includes(lang.code) ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      {lang.label}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            )}
           </div>
         ))}
       </div>

@@ -26,7 +26,14 @@ export default async function AsignacionesPage() {
   const [instancesRes, guidesRes, assignmentsRes] = await Promise.all([
     supabase
       .from('tour_instances')
-      .select('id, tour_slug, date, booking_type, current_pax, status, tours ( name_es )')
+      .select(`
+        id, tour_slug, date, booking_type, current_pax, status,
+        tours ( name_es ),
+        bookings!tour_instance_id (
+          id, status, tour_languages,
+          passengers ( name, id_type, id_number, birth_date, is_lead )
+        )
+      `)
       .gte('date', today)
       .lte('date', horizon)
       .neq('status', 'cancelled')
@@ -39,16 +46,49 @@ export default async function AsignacionesPage() {
       .select('tour_instance_id, team_member_id'),
   ]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let instances: InstanceRow[] = ((instancesRes.data ?? []) as unknown as Record<string, any>[]).map(inst => ({
-    id:           inst.id           as string,
-    tour_slug:    inst.tour_slug    as string,
-    tour_name:    (inst.tours?.name_es ?? inst.tour_slug) as string,
-    date:         inst.date         as string,
-    booking_type: inst.booking_type as string,
-    current_pax:  inst.current_pax  as number,
-    status:       inst.status       as string,
-  }));
+  interface RawPassenger {
+    name: string; id_type: string; id_number: string; birth_date: string | null; is_lead: boolean;
+  }
+  interface RawBooking {
+    status: string; tour_languages: string[] | null;
+    passengers: RawPassenger | RawPassenger[] | null;
+  }
+  interface RawInstance {
+    id: string; tour_slug: string; date: string; booking_type: string; current_pax: number; status: string;
+    tours: { name_es: string } | { name_es: string }[] | null;
+    bookings: RawBooking | RawBooking[] | null;
+  }
+
+  let instances: InstanceRow[] = ((instancesRes.data ?? []) as unknown as RawInstance[]).map(inst => {
+    const bookingsRaw = Array.isArray(inst.bookings) ? inst.bookings : (inst.bookings ? [inst.bookings] : []);
+    const activeBookings = bookingsRaw.filter(b => b.status !== 'cancelled' && b.status !== 'refunded');
+    const tour = Array.isArray(inst.tours) ? inst.tours[0] : inst.tours;
+
+    const passengers = activeBookings.flatMap(b => {
+      const ps = Array.isArray(b.passengers) ? b.passengers : (b.passengers ? [b.passengers] : []);
+      return ps.map(p => ({
+        name:       p.name,
+        id_type:    p.id_type,
+        id_number:  p.id_number,
+        birth_date: p.birth_date ?? null,
+        is_lead:    !!p.is_lead,
+      }));
+    });
+
+    const tourLanguages = Array.from(new Set(activeBookings.flatMap(b => (b.tour_languages ?? []) as string[])));
+
+    return {
+      id:             inst.id           as string,
+      tour_slug:      inst.tour_slug    as string,
+      tour_name:      tour?.name_es ?? inst.tour_slug,
+      date:           inst.date         as string,
+      booking_type:   inst.booking_type as string,
+      current_pax:    inst.current_pax  as number,
+      status:         inst.status       as string,
+      passengers,
+      tour_languages: tourLanguages,
+    };
+  });
 
   const guides:      GuideOption[]   = (guidesRes.data ?? []) as GuideOption[];
   let assignments: AssignmentRow[] = (assignmentsRes.data ?? []) as AssignmentRow[];

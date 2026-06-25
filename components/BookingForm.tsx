@@ -18,17 +18,24 @@ interface BookingFormProps {
 }
 
 interface PassengerData {
-  name:      string;
-  id_type:   'rut' | 'passport';
-  id_number: string;
-  email:     string;
-  phone:     string;
-  country:   string;
+  name:       string;
+  id_type:    'rut' | 'passport';
+  id_number:  string;
+  email:      string;
+  phone:      string;
+  country:    string;
+  birth_date: string;
 }
 
 function emptyPassenger(): PassengerData {
-  return { name: '', id_type: 'passport', id_number: '', email: '', phone: '', country: '' };
+  return { name: '', id_type: 'passport', id_number: '', email: '', phone: '', country: '', birth_date: '' };
 }
+
+const TOUR_LANGUAGES = [
+  { code: 'es' as const, es: 'Español', en: 'Spanish', pt: 'Espanhol' },
+  { code: 'en' as const, es: 'Inglés',  en: 'English', pt: 'Inglês'   },
+  { code: 'pt' as const, es: 'Portugués', en: 'Portuguese', pt: 'Português' },
+];
 
 const COUNTRIES = [
   'Argentina', 'Australia', 'Bolivia', 'Brasil', 'Canadá', 'Chile', 'Colombia',
@@ -89,8 +96,14 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
     setPax(prev => Math.min(prev, spots > 0 ? spots : 18));
   }
 
-  // Paso 2 — pasajeros
+  // Paso 2 — pasajeros (solo el titular completa todo; el resto del grupo
+  // solo nombre + documento, para que el guía verifique identidad el día del tour)
   const [passengers, setPassengers] = useState<PassengerData[]>([emptyPassenger()]);
+  const [tourLanguages, setTourLanguages] = useState<('es' | 'en' | 'pt')[]>([locale]);
+
+  function toggleTourLanguage(code: 'es' | 'en' | 'pt') {
+    setTourLanguages(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
+  }
 
   // Paso 3
   const [notes, setNotes] = useState('');
@@ -126,13 +139,16 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
   }
 
   function step2Valid(): boolean {
-    return passengers.every(p =>
-      p.name.trim().length >= 2 &&
-      p.id_number.trim().length >= 3 &&
-      p.email.includes('@') &&
-      p.phone.trim().length >= 6 &&
-      p.country.trim().length >= 2
-    );
+    if (tourLanguages.length === 0) return false;
+    return passengers.every((p, i) => {
+      const basicsOk = p.name.trim().length >= 2 && p.id_number.trim().length >= 3;
+      if (i !== 0) return basicsOk; // resto del grupo: solo nombre + documento
+      return basicsOk &&
+        p.email.includes('@') &&
+        p.phone.trim().length >= 6 &&
+        p.country.trim().length >= 2 &&
+        p.birth_date.trim().length === 10;
+    });
   }
 
   // ─── Submit: crear reserva + redirigir a MercadoPago ────────
@@ -145,7 +161,13 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
       tour_date:    tourDate,
       booking_type: bookingType,
       pax,
-      passengers:   passengers.map((p, i) => ({ ...p, is_lead: i === 0 })),
+      // El resto del grupo (i > 0) solo manda nombre + tipo/número de documento —
+      // sus campos de contacto quedan vacíos y el backend los guarda como null.
+      passengers: passengers.map((p, i) => i === 0
+        ? { ...p, is_lead: true }
+        : { name: p.name, id_type: p.id_type, id_number: p.id_number, is_lead: false }
+      ),
+      tour_languages: tourLanguages,
       locale,
       notes: notes || undefined,
     };
@@ -222,6 +244,9 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
       email:        'Email',
       phone:        'Teléfono (con código de país)',
       country:      'País de origen',
+      birthDate:    'Fecha de nacimiento',
+      tourLanguage: '¿En qué idioma(s) puede realizarse el tour?',
+      companionHint: 'Solo necesitamos su nombre y documento.',
       rut:          'RUT',
       passport:     'Pasaporte',
       notes:        'Notas adicionales (opcional)',
@@ -252,6 +277,9 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
       email:        'Email',
       phone:        'Phone (with country code)',
       country:      'Country of origin',
+      birthDate:    'Date of birth',
+      tourLanguage: 'Which language(s) can the tour be conducted in?',
+      companionHint: 'We only need their name and ID number.',
       rut:          'RUT (Chilean ID)',
       passport:     'Passport',
       notes:        'Additional notes (optional)',
@@ -282,6 +310,9 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
       email:        'Email',
       phone:        'Telefone (com código do país)',
       country:      'País de origem',
+      birthDate:    'Data de nascimento',
+      tourLanguage: 'Em qual(is) idioma(s) o tour pode ser realizado?',
+      companionHint: 'Só precisamos do nome e do documento.',
       rut:          'RUT (ID chileno)',
       passport:     'Passaporte',
       notes:        'Observações adicionais (opcional)',
@@ -446,6 +477,7 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
               <p className="text-sm font-semibold text-teal border-b border-gray-100 pb-2">
                 {labels.passengerN(i + 1, i === 0)}
               </p>
+              {i > 0 && <p className="text-xs text-gray-400">{labels.companionHint}</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label={labels.fullName} required>
                   <input
@@ -476,54 +508,92 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
                   />
                 </Input>
 
-                <Input label={labels.country} required>
-                  <select
-                    value={p.country}
-                    onChange={e => updatePassenger(i, 'country', e.target.value)}
-                    className={selectClass}
-                  >
-                    <option value="">—</option>
-                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </Input>
+                {i === 0 && (
+                  <>
+                    <Input label={labels.country} required>
+                      <select
+                        value={p.country}
+                        onChange={e => updatePassenger(i, 'country', e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="">—</option>
+                        {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </Input>
 
-                <Input label={labels.email} required>
-                  <input
-                    type="email"
-                    value={p.email}
-                    onChange={e => updatePassenger(i, 'email', e.target.value)}
-                    onBlur={i === 0 ? async e => {
-                      const email = e.target.value.trim();
-                      if (!email.includes('@')) return;
-                      try {
-                        const res = await fetch(`/api/clients?email=${encodeURIComponent(email)}`);
-                        if (!res.ok) return;
-                        const client = await res.json() as { name?: string; phone?: string; country?: string; id_type?: string; id_number?: string };
-                        if (client.name) setPassengers(prev => prev.map((p, idx) => idx === 0 ? {
-                          ...p,
-                          name:      p.name      || client.name      || '',
-                          phone:     p.phone     || client.phone     || '',
-                          country:   p.country   || client.country   || '',
-                          id_type:   p.id_type   || (client.id_type as 'rut' | 'passport') || 'passport',
-                          id_number: p.id_number || client.id_number || '',
-                        } : p));
-                      } catch { /* no interrumpir el flujo */ }
-                    } : undefined}
-                    placeholder="maria@email.com"
-                    className={inputClass}
-                  />
-                </Input>
+                    <Input label={labels.birthDate} required>
+                      <input
+                        type="date"
+                        value={p.birth_date}
+                        onChange={e => updatePassenger(i, 'birth_date', e.target.value)}
+                        max={new Date().toISOString().slice(0, 10)}
+                        className={inputClass}
+                      />
+                    </Input>
 
-                <Input label={labels.phone} required>
-                  <input
-                    type="tel"
-                    value={p.phone}
-                    onChange={e => updatePassenger(i, 'phone', e.target.value)}
-                    placeholder="+56 9 1234 5678"
-                    className={inputClass}
-                  />
-                </Input>
+                    <Input label={labels.email} required>
+                      <input
+                        type="email"
+                        value={p.email}
+                        onChange={e => updatePassenger(i, 'email', e.target.value)}
+                        onBlur={async e => {
+                          const email = e.target.value.trim();
+                          if (!email.includes('@')) return;
+                          try {
+                            const res = await fetch(`/api/clients?email=${encodeURIComponent(email)}`);
+                            if (!res.ok) return;
+                            const client = await res.json() as { name?: string; phone?: string; country?: string; id_type?: string; id_number?: string };
+                            if (client.name) setPassengers(prev => prev.map((p, idx) => idx === 0 ? {
+                              ...p,
+                              name:      p.name      || client.name      || '',
+                              phone:     p.phone     || client.phone     || '',
+                              country:   p.country   || client.country   || '',
+                              id_type:   p.id_type   || (client.id_type as 'rut' | 'passport') || 'passport',
+                              id_number: p.id_number || client.id_number || '',
+                            } : p));
+                          } catch { /* no interrumpir el flujo */ }
+                        }}
+                        placeholder="maria@email.com"
+                        className={inputClass}
+                      />
+                    </Input>
+
+                    <Input label={labels.phone} required>
+                      <input
+                        type="tel"
+                        value={p.phone}
+                        onChange={e => updatePassenger(i, 'phone', e.target.value)}
+                        placeholder="+56 9 1234 5678"
+                        className={inputClass}
+                      />
+                    </Input>
+                  </>
+                )}
               </div>
+
+              {i === 0 && (
+                <div className="flex flex-col gap-1.5 mt-1">
+                  <label className="text-sm font-medium text-ink">
+                    {labels.tourLanguage}<span className="text-orange ml-0.5">*</span>
+                  </label>
+                  <div className="flex gap-2 flex-wrap">
+                    {TOUR_LANGUAGES.map(lang => (
+                      <button
+                        key={lang.code}
+                        type="button"
+                        onClick={() => toggleTourLanguage(lang.code)}
+                        className={`border-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                          tourLanguages.includes(lang.code)
+                            ? 'border-teal bg-teal/5 text-teal'
+                            : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                        }`}
+                      >
+                        {lang[locale]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 

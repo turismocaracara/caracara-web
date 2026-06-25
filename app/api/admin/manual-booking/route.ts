@@ -9,28 +9,38 @@ import { resolveTourInstance, generateBookingCode, generateCancellationToken, is
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Mismo criterio que el flujo público: el titular completa todo, el resto del
+// grupo solo nombre + documento.
 const PassengerSchema = z.object({
-  name:      z.string().min(2).max(120),
-  id_type:   z.enum(['rut', 'passport']),
-  id_number: z.string().min(3).max(30),
-  email:     z.string().email(),
-  phone:     z.string().min(6).max(25),
-  country:   z.string().min(2).max(60),
-  is_lead:   z.boolean().default(false),
+  name:       z.string().min(2).max(120),
+  id_type:    z.enum(['rut', 'passport']),
+  id_number:  z.string().min(3).max(30),
+  email:      z.string().email().optional(),
+  phone:      z.string().min(6).max(25).optional(),
+  country:    z.string().min(2).max(60).optional(),
+  birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  is_lead:    z.boolean().default(false),
 });
 
 const ManualBookingSchema = z.object({
-  tour_slug:    z.string().min(3).max(80),
-  tour_date:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  booking_type: z.enum(['private', 'group']),
-  pax:          z.number().int().min(1).max(18),
-  passengers:   z.array(PassengerSchema).min(1).max(18),
-  locale:       z.enum(['es', 'en', 'pt']).default('es'),
-  notes:        z.string().max(500).optional(),
-  total_amount: z.number().int().min(0).optional(),
+  tour_slug:      z.string().min(3).max(80),
+  tour_date:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  booking_type:   z.enum(['private', 'group']),
+  pax:            z.number().int().min(1).max(18),
+  passengers:     z.array(PassengerSchema).min(1).max(18),
+  tour_languages: z.array(z.enum(['es', 'en', 'pt'])).optional(),
+  locale:         z.enum(['es', 'en', 'pt']).default('es'),
+  notes:          z.string().max(500).optional(),
+  total_amount:   z.number().int().min(0).optional(),
 }).refine(data => data.pax === data.passengers.length, {
   message: 'pax debe coincidir con la cantidad de pasajeros',
   path:    ['pax'],
+}).refine(data => {
+  const lead = data.passengers.find(p => p.is_lead) ?? data.passengers[0];
+  return !!lead.email && !!lead.phone && !!lead.country;
+}, {
+  message: 'El pasajero titular debe completar email, teléfono y país',
+  path:    ['passengers'],
 });
 
 export async function POST(req: NextRequest) {
@@ -52,7 +62,11 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
+  // El .refine() de arriba ya garantizó que el titular tiene email/phone/country.
   const lead = data.passengers.find(p => p.is_lead) ?? data.passengers[0];
+  const leadEmail = lead.email!;
+  const leadPhone = lead.phone!;
+  const leadCountry = lead.country!;
 
   const { data: tour, error: tourError } = await supabase
     .from('tours')
@@ -83,7 +97,7 @@ export async function POST(req: NextRequest) {
   const { data: existingClient } = await supabase
     .from('clients')
     .select('id')
-    .eq('email', lead.email.toLowerCase())
+    .eq('email', leadEmail.toLowerCase())
     .maybeSingle();
 
   let clientId: string;
@@ -94,9 +108,9 @@ export async function POST(req: NextRequest) {
       .from('clients')
       .insert({
         name:      lead.name,
-        email:     lead.email.toLowerCase(),
-        phone:     lead.phone,
-        country:   lead.country,
+        email:     leadEmail.toLowerCase(),
+        phone:     leadPhone,
+        country:   leadCountry,
         id_type:   lead.id_type,
         id_number: lead.id_number,
         locale:    data.locale,
@@ -144,6 +158,7 @@ export async function POST(req: NextRequest) {
       cancellation_token:  cancellationToken,
       status,
       locale:              data.locale,
+      tour_languages:      data.tour_languages ?? [data.locale],
       internal_notes:      data.notes ?? null,
     })
     .select('id, booking_code, status')
@@ -159,9 +174,10 @@ export async function POST(req: NextRequest) {
     name:       p.name,
     id_type:    p.id_type,
     id_number:  p.id_number,
-    email:      p.email.toLowerCase(),
-    phone:      p.phone,
-    country:    p.country,
+    email:      p.email?.toLowerCase() ?? null,
+    phone:      p.phone ?? null,
+    country:    p.country ?? null,
+    birth_date: p.birth_date ?? null,
     is_lead:    i === 0 || p.is_lead,
   }));
 
@@ -182,7 +198,7 @@ export async function POST(req: NextRequest) {
     }));
     const { error: emailError } = await resend.emails.send({
       from:    'Turismo CaraCara <reservas@turismocaracara.cl>',
-      to:      lead.email,
+      to:      leadEmail,
       subject: `Reserva confirmada — ${bookingCode}`,
       html,
     });
