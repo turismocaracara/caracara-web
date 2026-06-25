@@ -76,19 +76,20 @@ export default async function RiesgoPage() {
       // 'waiting_min' sin pagar todavía puede evaporarse, así que no basta con
       // que la suma de pax nominal ya alcance el mínimo.
       const paidPax = bookingsRaw.filter(isBookingPaid).reduce((sum, b) => sum + b.pax, 0);
+      const minPax  = (tour?.group_min_pax ?? 4) as number;
 
-      return {
+      const group: RiskGroupRow = {
         instance_id: inst.id as string,
         tour_slug:   inst.tour_slug as string,
         tour_name:   (tour?.name_es ?? 'Tour') as string,
         date:        inst.date as string,
-        min_pax:     (tour?.group_min_pax ?? 4) as number,
-        paidPax,
+        min_pax:     minPax,
         bookings,
       };
+      return { group, isAtRisk: bookings.length > 0 && paidPax < minPax };
     })
-    .filter(g => g.bookings.length > 0 && g.paidPax < g.min_pax)
-    .map(({ paidPax, ...g }) => g);
+    .filter(x => x.isAtRisk)
+    .map(x => x.group);
 
   return (
     <div className="flex min-h-screen">
