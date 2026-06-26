@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import BookingCalendar from './BookingCalendar';
 
@@ -109,14 +109,18 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
   const [notes, setNotes] = useState('');
 
   // ─── Sincronizar array de pasajeros con pax ──────────────
-  function handlePaxChange(n: number) {
-    const newPax = Math.max(1, Math.min(18, n));
-    setPax(newPax);
+  // Vía useEffect (no solo en el handler de los botones +/-) para que también
+  // cubra el valor inicial de pax y los ajustes automáticos de handleDateSelect.
+  useEffect(() => {
     setPassengers(prev => {
-      if (prev.length === newPax) return prev;
-      if (prev.length < newPax) return [...prev, ...Array.from({ length: newPax - prev.length }, emptyPassenger)];
-      return prev.slice(0, newPax);
+      if (prev.length === pax) return prev;
+      if (prev.length < pax) return [...prev, ...Array.from({ length: pax - prev.length }, emptyPassenger)];
+      return prev.slice(0, pax);
     });
+  }, [pax]);
+
+  function handlePaxChange(n: number) {
+    setPax(Math.max(1, Math.min(18, n)));
   }
 
   function updatePassenger(i: number, field: keyof PassengerData, value: string) {
