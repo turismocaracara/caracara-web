@@ -8,6 +8,9 @@ import ReportesManager, {
   type TourMonthRevenue,
   type CostItemRow,
   type TourOption,
+  type MonthlyAbandoned,
+  type TourAbandoned,
+  type AbandonedStage,
 } from '@/components/admin/ReportesManager';
 
 interface RawBooking {
@@ -20,6 +23,16 @@ interface RawBooking {
   tour_instances:
     | { tour_slug: string; date: string; tours: { name_es: string } | { name_es: string }[] | null }
     | { tour_slug: string; date: string; tours: { name_es: string } | { name_es: string }[] | null }[]
+    | null;
+}
+
+interface RawAbandonedBooking {
+  total_amount: number | null;
+  mp_preference_id: string | null;
+  created_at: string;
+  tour_instances:
+    | { tour_slug: string; tours: { name_es: string } | { name_es: string }[] | null }
+    | { tour_slug: string; tours: { name_es: string } | { name_es: string }[] | null }[]
     | null;
 }
 
@@ -37,7 +50,7 @@ export default async function ReportesPage() {
   const thisMonth  = today.toISOString().slice(0, 7);
   const sixMonthsAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1);
 
-  const [bookingsRes, costItemsRes, toursRes, instancesRes] = await Promise.all([
+  const [bookingsRes, costItemsRes, toursRes, instancesRes, abandonedRes] = await Promise.all([
     supabase
       .from('bookings')
       .select(`
@@ -52,9 +65,20 @@ export default async function ReportesPage() {
       .select('tour_slug, date')
       .in('status', ['confirmed', 'executed'])
       .gte('date', `${thisMonth}-01`),
+
+    // Ventas no concretadas — holds de pago vencidos sin pagar (ver sweepExpiredHolds)
+    supabase
+      .from('bookings')
+      .select(`
+        total_amount, mp_preference_id, created_at,
+        tour_instances!tour_instance_id ( tour_slug, tours ( name_es ) )
+      `)
+      .eq('cancellation_reason', 'payment_timeout')
+      .gte('created_at', sixMonthsAgo.toISOString()),
   ]);
 
   const bookings = (bookingsRes.data ?? []) as unknown as RawBooking[];
+  const abandonedBookings = (abandonedRes.data ?? []) as unknown as RawAbandonedBooking[];
 
   // ─── Ingresos mensuales (últimos 6 meses) ───
   const monthlyMap = new Map<string, { revenue: number; pax: number; count: number }>();
@@ -114,6 +138,60 @@ export default async function ReportesPage() {
   const costItems: CostItemRow[] = (costItemsRes.data ?? []) as CostItemRow[];
   const tours:     TourOption[]  = (toursRes.data ?? []) as TourOption[];
 
+  // ─── Ventas no concretadas — por mes (últimos 6), por tour (este mes) y por
+  // etapa en la que se quedó (antes/después de llegar a MercadoPago) ───
+  const abandonedMonthlyMap = new Map<string, { count: number; amount: number }>();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(sixMonthsAgo.getFullYear(), sixMonthsAgo.getMonth() + i, 1);
+    abandonedMonthlyMap.set(d.toISOString().slice(0, 7), { count: 0, amount: 0 });
+  }
+
+  const abandonedTourMap = new Map<string, { tour_name: string; count: number; amount: number }>();
+  let abandonedBeforeMp = { count: 0, amount: 0 };
+  let abandonedAtMp     = { count: 0, amount: 0 };
+
+  for (const b of abandonedBookings) {
+    const month = b.created_at.slice(0, 7);
+    const amount = b.total_amount ?? 0;
+
+    if (abandonedMonthlyMap.has(month)) {
+      const m = abandonedMonthlyMap.get(month)!;
+      m.count  += 1;
+      m.amount += amount;
+    }
+
+    if (month === thisMonth) {
+      const inst = Array.isArray(b.tour_instances) ? b.tour_instances[0] : b.tour_instances;
+      if (inst) {
+        const tour = Array.isArray(inst.tours) ? inst.tours[0] : inst.tours;
+        const key = inst.tour_slug;
+        const existing = abandonedTourMap.get(key) ?? { tour_name: tour?.name_es ?? key, count: 0, amount: 0 };
+        existing.count  += 1;
+        existing.amount += amount;
+        abandonedTourMap.set(key, existing);
+      }
+
+      if (b.mp_preference_id) {
+        abandonedAtMp = { count: abandonedAtMp.count + 1, amount: abandonedAtMp.amount + amount };
+      } else {
+        abandonedBeforeMp = { count: abandonedBeforeMp.count + 1, amount: abandonedBeforeMp.amount + amount };
+      }
+    }
+  }
+
+  const monthlyAbandoned: MonthlyAbandoned[] = Array.from(abandonedMonthlyMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, v]) => ({ month, ...v }));
+
+  const tourAbandoned: TourAbandoned[] = Array.from(abandonedTourMap.entries())
+    .map(([slug, v]) => ({ tour_slug: slug, ...v }))
+    .sort((a, b) => b.count - a.count);
+
+  const abandonedStages: AbandonedStage[] = [
+    { stage: 'before_mp', label: 'No llegó a MercadoPago', ...abandonedBeforeMp },
+    { stage: 'at_mp',     label: 'Llegó a MercadoPago y no pagó', ...abandonedAtMp },
+  ];
+
   return (
     <div className="flex min-h-screen">
       <AdminSidebar userEmail={user.email ?? ''} />
@@ -149,6 +227,9 @@ export default async function ReportesPage() {
             tourMonthRevenue={tourMonthRevenue}
             costItems={costItems}
             tours={tours}
+            monthlyAbandoned={monthlyAbandoned}
+            tourAbandoned={tourAbandoned}
+            abandonedStages={abandonedStages}
           />
         )}
       </main>

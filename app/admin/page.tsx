@@ -60,7 +60,7 @@ export default async function AdminDashboard() {
   const monthEnd   = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)
     .toISOString().slice(0, 10);
 
-  const [todayInstancesRes, recentRes, statsRes] = await Promise.all([
+  const [todayInstancesRes, recentRes, statsRes, abandonedRes] = await Promise.all([
     // Tours de hoy: consultar via tour_instances
     supabase
       .from('tour_instances')
@@ -90,11 +90,23 @@ export default async function AdminDashboard() {
       .gte('created_at', monthStart + 'T00:00:00')
       .lte('created_at', monthEnd + 'T23:59:59')
       .neq('status', 'cancelled'),
+
+    // Ventas no concretadas del mes: holds de pago que vencieron sin pagar
+    // (sweepExpiredHolds las marca cancellation_reason='payment_timeout').
+    supabase
+      .from('bookings')
+      .select('total_amount, mp_preference_id')
+      .eq('cancellation_reason', 'payment_timeout')
+      .gte('created_at', monthStart + 'T00:00:00')
+      .lte('created_at', monthEnd + 'T23:59:59'),
   ]);
 
   const todayInstances = todayInstancesRes.data ?? [];
   const recentBookings = recentRes.data ?? [];
   const monthData      = statsRes.data ?? [];
+  const abandonedData  = abandonedRes.data ?? [];
+  const abandonedCount  = abandonedData.length;
+  const abandonedAmount = abandonedData.reduce((s, b) => s + (b.total_amount ?? 0), 0);
 
   // Ingresos solo de reservas con pago confirmado, netos del crédito aplicado
   // (esa parte ya había entrado como plata en una reserva anterior).
@@ -125,6 +137,24 @@ export default async function AdminDashboard() {
           <StatCard label="Pasajeros del mes"          value={String(monthPax)} />
           <StatCard label="Ingresos del mes"           value={monthTotal > 0 ? fmtCLP(monthTotal) : '—'} />
           <StatCard label="Pendientes de confirmar"    value={String(pendingCount)} highlight={pendingCount > 0} />
+        </div>
+
+        {/* Ventas no concretadas: reservas que llegaron a crearse pero el cliente
+            nunca pagó y el hold expiró (ver lib/booking-engine.ts sweepExpiredHolds) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+          <div className="relative">
+            <StatCard
+              label="Ventas no concretadas (mes)"
+              value={String(abandonedCount)}
+              sub={abandonedAmount > 0 ? `${fmtCLP(abandonedAmount)} potencial` : undefined}
+              highlight={abandonedCount > 0}
+            />
+            {abandonedCount > 0 && (
+              <a href="/admin/reportes" className="absolute top-4 right-4 text-xs text-teal hover:underline">
+                Ver detalle →
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Tours de hoy */}
@@ -214,11 +244,12 @@ export default async function AdminDashboard() {
   );
 }
 
-function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function StatCard({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
   return (
     <div className={`bg-white rounded-xl border p-4 ${highlight ? 'border-orange-200 bg-orange-50' : 'border-gray-100'}`}>
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       <p className={`text-2xl font-bold ${highlight ? 'text-orange-600' : 'text-gray-900'}`}>{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
     </div>
   );
 }

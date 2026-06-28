@@ -31,6 +31,26 @@ export interface TourOption {
   name_es: string;
 }
 
+export interface MonthlyAbandoned {
+  month:  string; // YYYY-MM
+  count:  number;
+  amount: number;
+}
+
+export interface TourAbandoned {
+  tour_slug: string;
+  tour_name: string;
+  count:     number;
+  amount:    number;
+}
+
+export interface AbandonedStage {
+  stage:  'before_mp' | 'at_mp';
+  label:  string;
+  count:  number;
+  amount: number;
+}
+
 function fmtCLP(n: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n);
 }
@@ -136,6 +156,97 @@ function TourMonthSection({ tours, costItems }: { tours: TourMonthRevenue[]; cos
       <p className="text-[11px] text-gray-400 mt-2">
         Rentabilidad estimada en base a los costos fijos ingresados abajo. No incluye gastos operacionales reales (combustible, peajes) hasta que el equipo los registre desde la app de guías.
       </p>
+    </section>
+  );
+}
+
+// ── Sección: ventas no concretadas ───────────────────────────────────────────
+function AbandonedSalesSection({
+  monthly,
+  byTour,
+  stages,
+}: {
+  monthly: MonthlyAbandoned[];
+  byTour:  TourAbandoned[];
+  stages:  AbandonedStage[];
+}) {
+  const maxCount = Math.max(...monthly.map(m => m.count), 1);
+  const totalCount  = stages.reduce((s, st) => s + st.count, 0);
+  const totalAmount = stages.reduce((s, st) => s + st.amount, 0);
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-1">
+        Ventas no concretadas
+      </h2>
+      <p className="text-xs text-gray-400 mb-3">
+        Reservas creadas pero nunca pagadas — el cliente abandonó antes de que venciera el hold de pago.
+      </p>
+
+      <div className="bg-white rounded-xl border border-gray-100 p-5 mb-4">
+        <div className="flex items-end gap-3 h-24 mb-3">
+          {monthly.map(m => (
+            <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
+              <div
+                className="w-full bg-orange-100 hover:bg-orange-200 rounded-t-md transition-colors"
+                style={{ height: `${Math.max((m.count / maxCount) * 100, m.count > 0 ? 4 : 0)}%` }}
+                title={`${m.count} reservas · ${fmtCLP(m.amount)}`}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-3">
+          {monthly.map(m => (
+            <div key={m.month} className="flex-1 text-center">
+              <p className="text-xs font-semibold text-gray-700">{m.count}</p>
+              <p className="text-[11px] text-gray-400 capitalize">{fmtMonth(m.month)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Este mes: por etapa de abandono */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+        {stages.map(s => (
+          <div key={s.stage} className="bg-white rounded-xl border border-gray-100 p-4">
+            <p className="text-xs text-gray-500 mb-1">{s.label} · este mes</p>
+            <p className="text-xl font-bold text-gray-900">{s.count}</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {s.amount > 0 ? `${fmtCLP(s.amount)} potencial` : 'monto no registrado'}
+            </p>
+          </div>
+        ))}
+      </div>
+      {totalCount > 0 && (
+        <p className="text-[11px] text-gray-400 mb-4">
+          Total este mes: {totalCount} reservas · {fmtCLP(totalAmount)} potencial (solo cuenta el monto de las reservas que llegaron a calcular un precio).
+        </p>
+      )}
+
+      {/* Este mes: por tour */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-50 bg-gray-50/60">
+              <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Tour</th>
+              <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Reservas no concretadas</th>
+              <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-500">Monto potencial</th>
+            </tr>
+          </thead>
+          <tbody>
+            {byTour.map((t, i) => (
+              <tr key={t.tour_slug} className={i > 0 ? 'border-t border-gray-50' : ''}>
+                <td className="px-4 py-3 text-gray-800 font-medium">{t.tour_name}</td>
+                <td className="px-4 py-3 text-center text-gray-600">{t.count}</td>
+                <td className="px-4 py-3 text-right text-gray-800">{t.amount > 0 ? fmtCLP(t.amount) : '—'}</td>
+              </tr>
+            ))}
+            {byTour.length === 0 && (
+              <tr><td colSpan={3} className="px-4 py-8 text-center text-sm text-gray-400">Sin ventas abandonadas este mes</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
@@ -280,16 +391,23 @@ export default function ReportesManager({
   tourMonthRevenue,
   costItems,
   tours,
+  monthlyAbandoned,
+  tourAbandoned,
+  abandonedStages,
 }: {
   monthlyRevenue:    MonthlyRevenue[];
   tourMonthRevenue:  TourMonthRevenue[];
   costItems:         CostItemRow[];
   tours:             TourOption[];
+  monthlyAbandoned:  MonthlyAbandoned[];
+  tourAbandoned:     TourAbandoned[];
+  abandonedStages:   AbandonedStage[];
 }) {
   return (
     <div className="flex flex-col gap-8">
       <MonthlyRevenueSection months={monthlyRevenue} />
       <TourMonthSection tours={tourMonthRevenue} costItems={costItems} />
+      <AbandonedSalesSection monthly={monthlyAbandoned} byTour={tourAbandoned} stages={abandonedStages} />
       <CostItemsSection initialItems={costItems} tours={tours} />
     </div>
   );
