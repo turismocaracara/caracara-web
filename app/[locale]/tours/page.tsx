@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
-import { useTranslations } from 'next-intl';
+import { getTranslations } from 'next-intl/server';
 import { Link } from '@/navigation';
-import { TOURS, CATEGORIES, getToursByCategory, type TourCategory } from '@/lib/tours';
-import TourCard from '@/components/TourCard';
+import { CATEGORIES, type TourCategory } from '@/lib/tours';
+import { supabase } from '@/lib/supabase';
+import TourCard, { type CardTour } from '@/components/TourCard';
+
+export const revalidate = 300;
 
 export async function generateMetadata({ params: { locale } }: { params: { locale: string } }): Promise<Metadata> {
   const titles: Record<string, string> = { es: 'Tours — Turismo CaraCara', en: 'Tours — Turismo CaraCara', pt: 'Tours — Turismo CaraCara' };
@@ -14,16 +17,36 @@ export async function generateMetadata({ params: { locale } }: { params: { local
   return { title: titles[locale], description: descriptions[locale] };
 }
 
-export default function ToursPage({
+async function getTours(category?: TourCategory): Promise<CardTour[]> {
+  let query = supabase
+    .from('tours')
+    .select('slug, name_es, name_en, name_pt, category, difficulty, hide_difficulty, duration_hrs, max_pax, hide_pax, highlights')
+    .eq('active', true)
+    .order('name_es');
+  if (category) query = query.eq('category', category);
+
+  const [{ data }, { data: pricing }] = await Promise.all([
+    query,
+    supabase.from('group_pricing').select('tour_slug, price_per_person'),
+  ]);
+
+  const priceBySlug = new Map((pricing ?? []).map(p => [p.tour_slug, p.price_per_person]));
+  return (data ?? []).map(t => ({ ...t, group_price: priceBySlug.get(t.slug) ?? null })) as CardTour[];
+}
+
+export default async function ToursPage({
+  params: { locale },
   searchParams,
 }: {
+  params: { locale: string };
   searchParams: { category?: string };
 }) {
-  const t = useTranslations('tours');
-  const ct = useTranslations('common');
-
   const activeCategory = searchParams.category as TourCategory | undefined;
-  const tours = activeCategory ? getToursByCategory(activeCategory) : TOURS;
+  const [t, ct, tours] = await Promise.all([
+    getTranslations({ locale, namespace: 'tours' }),
+    getTranslations({ locale, namespace: 'common' }),
+    getTours(activeCategory),
+  ]);
 
   return (
     <div className="min-h-screen bg-cream">

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { distributeGroups } from '@/lib/redistribution';
-import { getBasePickupTime, computePickupTimes } from '@/lib/pickup-route';
+import { getArrivalTime, getFirstStopAddress, computePickupTimes } from '@/lib/pickup-route';
 import { GroupTourConfirmedEmail } from '@/emails/GroupTourConfirmed';
 import { Resend } from 'resend';
 import { render } from '@react-email/render';
@@ -131,7 +131,8 @@ async function sendGroupConfirmedEmails(tourSlug: string, tourName: string, tour
     .eq('status', 'confirmed');
 
   const allInstances = (instances ?? []) as unknown as RawInstance[];
-  const basePickupTime = await getBasePickupTime(tourSlug, tourDate);
+  const arrivalTime = await getArrivalTime(tourSlug, tourDate);
+  const trailheadAddress = await getFirstStopAddress(tourSlug);
 
   for (const inst of allInstances) {
     const bookingsRaw = Array.isArray(inst.bookings) ? inst.bookings : (inst.bookings ? [inst.bookings] : []);
@@ -145,18 +146,22 @@ async function sendGroupConfirmedEmails(tourSlug: string, tourName: string, tour
     if (allPassengers.length === 0) continue;
 
     let times: Map<string, string> | null = null;
-    if (basePickupTime) {
+    if (arrivalTime && trailheadAddress) {
       const withAddress = allPassengers.filter(p => p.pickup_address);
       if (withAddress.length === allPassengers.length) {
         times = await computePickupTimes(
-          basePickupTime,
+          arrivalTime,
+          trailheadAddress,
           withAddress.map(p => ({ id: p.id, address: p.pickup_address! }))
         );
       }
     }
 
     for (const p of allPassengers) {
-      const pickupTime = times?.get(p.id) ?? basePickupTime;
+      // Sin personalización (Capa 2 inactiva) no mostramos arrivalTime como si fuera
+      // la hora de recogida del pasajero — son cosas distintas — y caemos al mensaje
+      // genérico de "te contactaremos por WhatsApp" en el email.
+      const pickupTime = times?.get(p.id) ?? null;
       try {
         const html = await render(GroupTourConfirmedEmail({
           bookingCode:   p.booking_code,

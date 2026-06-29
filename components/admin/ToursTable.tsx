@@ -76,6 +76,7 @@ export default function ToursTable({ initialTours }: { initialTours: AdminTourRo
               <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Duración</th>
               <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Máx. pax</th>
               <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Activo</th>
+              <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Editar</th>
               <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Ver</th>
             </tr>
           </thead>
@@ -123,6 +124,11 @@ export default function ToursTable({ initialTours }: { initialTours: AdminTourRo
                   </button>
                 </td>
                 <td className="px-4 py-3 text-center">
+                  <a href={`/admin/tours/${tour.slug}`} className="text-xs text-teal hover:underline font-medium">
+                    Editar
+                  </a>
+                </td>
+                <td className="px-4 py-3 text-center">
                   <a
                     href={`/es/tours/${tour.slug}`}
                     target="_blank"
@@ -137,7 +143,7 @@ export default function ToursTable({ initialTours }: { initialTours: AdminTourRo
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">
                   Sin resultados
                 </td>
               </tr>

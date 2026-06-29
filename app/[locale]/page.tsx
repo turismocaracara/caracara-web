@@ -1,9 +1,22 @@
 import type { Metadata } from 'next';
-import { useTranslations } from 'next-intl';
+import { getTranslations } from 'next-intl/server';
 import { Link } from '@/navigation';
-import { TOURS, CATEGORIES, type TourCategory } from '@/lib/tours';
-import TourCard from '@/components/TourCard';
+import { CATEGORIES, type TourCategory } from '@/lib/tours';
+import { supabase } from '@/lib/supabase';
+import TourCard, { type CardTour } from '@/components/TourCard';
 import AnimateIn from '@/components/AnimateIn';
+
+export const revalidate = 300;
+
+async function getFeaturedTours(): Promise<CardTour[]> {
+  const { data } = await supabase
+    .from('tours')
+    .select('slug, name_es, name_en, name_pt, category, difficulty, hide_difficulty, duration_hrs, max_pax, hide_pax, highlights')
+    .eq('active', true)
+    .order('name_es');
+  const tours = (data ?? []) as CardTour[];
+  return tours.filter((_, i) => i % 4 === 0).slice(0, 3);
+}
 
 export async function generateMetadata({ params: { locale } }: { params: { locale: string } }): Promise<Metadata> {
   const descriptions: Record<string, string> = {
@@ -86,11 +99,12 @@ const WHY_ICONS = [
   </svg>,
 ];
 
-function HomePage() {
-  const t = useTranslations('home');
-  const ct = useTranslations('common');
-
-  const featured = TOURS.filter((_, i) => i % 4 === 0).slice(0, 3);
+async function HomePage({ params: { locale } }: { params: { locale: string } }) {
+  const [t, ct, featured] = await Promise.all([
+    getTranslations({ locale, namespace: 'home' }),
+    getTranslations({ locale, namespace: 'common' }),
+    getFeaturedTours(),
+  ]);
 
   return (
     <>
