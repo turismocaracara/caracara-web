@@ -1,6 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
+
+// Lazy-load modal to keep initial bundle lighter
+const TourEditModal = dynamic(() => import('./TourEditModal'), { ssr: false });
 
 export interface AdminTourRow {
   slug: string;
@@ -8,7 +12,6 @@ export interface AdminTourRow {
   category: string | null;
   difficulty: string | null;
   duration_hrs: number | null;
-  max_pax: number | null;
   active: boolean;
 }
 
@@ -27,10 +30,14 @@ const DIFF: Record<string, { label: string; cls: string }> = {
   high:   { label: 'Exigente',  cls: 'bg-red-50 text-red-700' },
 };
 
+// editingSlug: undefined = closed, null = new tour, string = edit existing
+type EditingState = { slug: string | null } | undefined;
+
 export default function ToursTable({ initialTours }: { initialTours: AdminTourRow[] }) {
-  const [tours, setTours]     = useState(initialTours);
+  const [tours, setTours]       = useState(initialTours);
   const [toggling, setToggling] = useState<string | null>(null);
-  const [search, setSearch]   = useState('');
+  const [search, setSearch]     = useState('');
+  const [editing, setEditing]   = useState<EditingState>(undefined);
 
   const filtered = search
     ? tours.filter(t =>
@@ -55,16 +62,40 @@ export default function ToursTable({ initialTours }: { initialTours: AdminTourRo
     }
   }
 
+  function handleSaved(slug: string, nameEs: string) {
+    setTours(prev => {
+      const exists = prev.some(t => t.slug === slug);
+      if (exists) {
+        return prev.map(t => t.slug === slug ? { ...t, name_es: nameEs || t.name_es } : t);
+      }
+      // New tour: add to list (inactive by default)
+      return [...prev, { slug, name_es: nameEs, category: null, difficulty: null, duration_hrs: null, active: false }];
+    });
+    setEditing(undefined);
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Search */}
-      <input
-        type="text"
-        placeholder="Buscar por nombre o slug…"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="w-full max-w-xs border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal"
-      />
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-3">
+        <input
+          type="text"
+          placeholder="Buscar por nombre o slug…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full max-w-xs border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal"
+        />
+        <button
+          type="button"
+          onClick={() => setEditing({ slug: null })}
+          className="flex items-center gap-1.5 bg-teal text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-teal/90 transition-colors whitespace-nowrap"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Nuevo tour
+        </button>
+      </div>
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <table className="w-full text-sm">
@@ -74,7 +105,6 @@ export default function ToursTable({ initialTours }: { initialTours: AdminTourRo
               <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Categoría</th>
               <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Dificultad</th>
               <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Duración</th>
-              <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Máx. pax</th>
               <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Activo</th>
               <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Editar</th>
               <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Ver</th>
@@ -103,9 +133,6 @@ export default function ToursTable({ initialTours }: { initialTours: AdminTourRo
                 <td className="px-4 py-3 text-center text-gray-600 text-xs">
                   {tour.duration_hrs ? `${tour.duration_hrs}h` : '—'}
                 </td>
-                <td className="px-4 py-3 text-center text-gray-600 text-xs">
-                  {tour.max_pax ?? '—'}
-                </td>
                 <td className="px-4 py-3 text-center">
                   <button
                     type="button"
@@ -124,9 +151,13 @@ export default function ToursTable({ initialTours }: { initialTours: AdminTourRo
                   </button>
                 </td>
                 <td className="px-4 py-3 text-center">
-                  <a href={`/admin/tours/${tour.slug}`} className="text-xs text-teal hover:underline font-medium">
+                  <button
+                    type="button"
+                    onClick={() => setEditing({ slug: tour.slug })}
+                    className="text-xs text-teal hover:underline font-medium"
+                  >
                     Editar
-                  </a>
+                  </button>
                 </td>
                 <td className="px-4 py-3 text-center">
                   <a
@@ -143,7 +174,7 @@ export default function ToursTable({ initialTours }: { initialTours: AdminTourRo
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
                   Sin resultados
                 </td>
               </tr>
@@ -155,6 +186,14 @@ export default function ToursTable({ initialTours }: { initialTours: AdminTourRo
       <p className="text-xs text-gray-400">
         {tours.filter(t => t.active).length} de {tours.length} tours activos
       </p>
+
+      {editing !== undefined && (
+        <TourEditModal
+          slug={editing.slug}
+          onClose={() => setEditing(undefined)}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 }

@@ -15,13 +15,11 @@ interface TourRow {
   difficulty: string | null;
   hide_difficulty: boolean | null;
   duration_hrs: number | null;
-  max_pax: number | null;
-  hide_pax: boolean | null;
   highlights: string[];
   includes_keys: string[];
   excludes_keys: string[];
   itinerary: { time: string; place: string; isLunch?: boolean }[];
-  wine_convenios: string[];
+  images: string[] | null;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -50,9 +48,8 @@ async function getTourFromDB(slug: string): Promise<TourRow | null> {
       slug, name_es, name_en, name_pt,
       description_es, description_en, description_pt,
       category, difficulty, hide_difficulty,
-      duration_hrs, max_pax, hide_pax,
-      highlights, includes_keys, excludes_keys,
-      itinerary, wine_convenios, active
+      duration_hrs, highlights, includes_keys, excludes_keys,
+      itinerary, images, active
     `)
     .eq('slug', slug)
     .eq('active', true)
@@ -159,14 +156,6 @@ export default async function TourDetailPage(
                 {t('common.duration')}: {tour.duration_hrs}h
               </span>
             )}
-            {!tour.hide_pax && tour.max_pax && (
-              <span className="flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                {t('common.maxPax', { n: tour.max_pax })}
-              </span>
-            )}
             {minPrice !== null && minPrice !== Infinity ? (
               <span className="text-orange font-medium">
                 {t('common.from')} {fmtCLP(minPrice)} {t('common.price.perPerson')}
@@ -178,23 +167,58 @@ export default async function TourDetailPage(
         </div>
       </div>
 
-      {/* Photos placeholder */}
+      {/* Photos */}
       <div className="bg-teal/5 border-b border-teal/10">
         <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="grid grid-cols-3 gap-2 h-52 sm:h-72 rounded-2xl overflow-hidden">
-            <div className="col-span-2 bg-gradient-to-br from-teal/20 to-teal/10 rounded-l-2xl flex items-center justify-center">
-              <div className="text-center text-teal/40">
-                <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <p className="text-sm font-medium">Fotos próximamente</p>
+          {tour.images && tour.images.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2 h-52 sm:h-72 rounded-2xl overflow-hidden">
+              {/* Main image */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={tour.images[0]}
+                alt={tourName}
+                className="col-span-2 w-full h-full object-cover rounded-l-2xl"
+              />
+              {/* Up to 2 thumbnails */}
+              <div className="flex flex-col gap-2">
+                {tour.images[1] ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={tour.images[1]}
+                    alt=""
+                    className="flex-1 w-full object-cover rounded-tr-2xl"
+                  />
+                ) : (
+                  <div className="flex-1 bg-gradient-to-br from-orange/10 to-orange/5 rounded-tr-2xl" />
+                )}
+                {tour.images[2] ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={tour.images[2]}
+                    alt=""
+                    className="flex-1 w-full object-cover rounded-br-2xl"
+                  />
+                ) : (
+                  <div className="flex-1 bg-gradient-to-br from-teal/15 to-teal/5 rounded-br-2xl" />
+                )}
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex-1 bg-gradient-to-br from-orange/10 to-orange/5 rounded-tr-2xl" />
-              <div className="flex-1 bg-gradient-to-br from-teal/15 to-teal/5 rounded-br-2xl" />
+          ) : (
+            <div className="grid grid-cols-3 gap-2 h-52 sm:h-72 rounded-2xl overflow-hidden">
+              <div className="col-span-2 bg-gradient-to-br from-teal/20 to-teal/10 rounded-l-2xl flex items-center justify-center">
+                <div className="text-center text-teal/40">
+                  <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <p className="text-sm font-medium">Fotos próximamente</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <div className="flex-1 bg-gradient-to-br from-orange/10 to-orange/5 rounded-tr-2xl" />
+                <div className="flex-1 bg-gradient-to-br from-teal/15 to-teal/5 rounded-br-2xl" />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -264,7 +288,7 @@ export default async function TourDetailPage(
                           <svg className="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                           </svg>
-                          {t(`tourIncludeItems.${key}`)}
+                          {key.startsWith('custom:') ? key.slice(7) : t(`tourIncludeItems.${key}`)}
                         </li>
                       ))}
                     </ul>
@@ -284,7 +308,7 @@ export default async function TourDetailPage(
                           <svg className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                           </svg>
-                          {t(`tourExcludeItems.${key}`)}
+                          {key.startsWith('custom:') ? key.slice(7) : t(`tourExcludeItems.${key}`)}
                         </li>
                       ))}
                     </ul>
@@ -301,26 +325,13 @@ export default async function TourDetailPage(
                   {tour.highlights.map(h => (
                     <div key={h} className="flex items-center gap-2 bg-white rounded-xl px-4 py-3 text-sm text-gray-700">
                       <span className="w-2 h-2 bg-orange rounded-full flex-shrink-0" />
-                      {t(`highlights.${h}`)}
+                      {h.startsWith('custom:') ? h.slice(7) : t(`highlights.${h}`)}
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Wineries */}
-            {tour.wine_convenios?.length > 0 && (
-              <div>
-                <h2 className="font-semibold text-ink text-lg mb-4">{t('common.wineries')}</h2>
-                <div className="flex flex-wrap gap-2">
-                  {tour.wine_convenios.map(w => (
-                    <span key={w} className="bg-red-50 text-red-700 border border-red-100 text-sm px-3 py-1 rounded-full">
-                      {w}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Right: pricing + booking */}

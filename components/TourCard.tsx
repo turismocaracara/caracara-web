@@ -90,7 +90,7 @@ export default function TourCard({ tour }: { tour: CardTour }) {
         <div className="flex flex-wrap gap-1.5 mt-1">
           {tour.highlights.slice(0, 3).map((h) => (
             <span key={h} className="text-xs bg-cream text-teal px-2 py-0.5 rounded-full">
-              {t(`highlights.${h}`)}
+              {h.startsWith('custom:') ? h.slice(7) : t(`highlights.${h}`)}
             </span>
           ))}
         </div>

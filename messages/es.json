@@ -312,9 +312,18 @@
   "tourIncludeItems": {
     "pickup_dropoff": "Pick-up y drop-off en tu hotel",
     "bilingual_guide": "Guía bilingüe certificado",
-    "wine_tasting_vineyard": "Degustación y tour en las viñas"
+    "wine_tasting_vineyard": "Degustación y tour en las viñas",
+    "lunch": "Almuerzo",
+    "snacks_water": "Snacks y agua",
+    "entry_fees": "Entradas incluidas",
+    "equipment": "Equipamiento",
+    "tour_photos": "Fotografías del tour"
   },
   "tourExcludeItems": {
-    "lunch": "Almuerzo"
+    "lunch": "Almuerzo",
+    "personal_expenses": "Gastos personales",
+    "tips": "Propinas",
+    "entry_fees_excl": "Entradas a parques y atracciones",
+    "personal_insurance": "Seguro personal de viaje"
   }
 }

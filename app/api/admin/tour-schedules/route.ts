@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 
+export async function GET(req: NextRequest) {
+  const member = await getCurrentTeamMember();
+  if (member?.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const slug = req.nextUrl.searchParams.get('slug');
+  if (!slug) return NextResponse.json([], { status: 200 });
+
+  const { data, error } = await supabase
+    .from('tour_schedules')
+    .select('id, tour_slug, season, pickup_time')
+    .eq('tour_slug', slug);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data ?? []);
+}
+
 export async function POST(req: NextRequest) {
   const member = await getCurrentTeamMember();
   if (member?.role !== 'admin') {

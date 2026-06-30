@@ -11,7 +11,7 @@ export default async function ToursPage() {
 
   const { data, error } = await supabase
     .from('tours')
-    .select('slug, name_es, category, difficulty, duration_hrs, max_pax, active')
+    .select('slug, name_es, category, difficulty, duration_hrs, active')
     .order('name_es');
 
   const tours: AdminTourRow[] = (data ?? []) as AdminTourRow[];
