@@ -1,7 +1,7 @@
-import { Inter } from 'next/font/google';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import '../globals.css';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata = {
   title: 'Admin — CaraCara',
@@ -10,7 +10,7 @@ export const metadata = {
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={inter.variable}>
+    <html lang="es" className={jakarta.variable}>
       <body className="bg-gray-50 min-h-screen font-sans antialiased">
         {children}
       </body>
