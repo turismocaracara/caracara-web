@@ -26,7 +26,7 @@ const config: Config = {
         ink: '#1A1A2E',
       },
       fontFamily: {
-        sans: ['var(--font-geist-sans)', 'var(--font-inter)', 'system-ui', 'sans-serif'],
+        sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
         display: ['var(--font-playfair)', 'Georgia', 'serif'],
       },
     },
