@@ -97,7 +97,7 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
         ) : (
           <table className="w-full text-sm min-w-[900px]">
             <thead>
-              <tr className="border-b border-gray-50">
+              <tr className="border-b border-gray-100">
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Código</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Cliente</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Tour</th>
@@ -112,7 +112,7 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
             </thead>
             <tbody>
               {bookings.map((b, i) => (
-                <tr key={b.id} className={`${i > 0 ? 'border-t border-gray-50' : ''} hover:bg-gray-50/50 transition-colors`}>
+                <tr key={b.id} className={`${i > 0 ? 'border-t border-gray-100' : ''} hover:bg-gray-50/50 transition-colors`}>
                   <td className="px-4 py-3 font-mono text-xs text-teal font-semibold">{b.booking_code}</td>
                   <td className="px-4 py-3">
                     {b.client_name ? (

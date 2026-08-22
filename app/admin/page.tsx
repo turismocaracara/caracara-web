@@ -139,9 +139,8 @@ export default async function AdminDashboard() {
           <StatCard label="Pendientes de confirmar"    value={String(pendingCount)} highlight={pendingCount > 0} />
         </div>
 
-        {/* Ventas no concretadas: reservas que llegaron a crearse pero el cliente
-            nunca pagó y el hold expiró (ver lib/booking-engine.ts sweepExpiredHolds) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+        {/* Ventas no concretadas */}
+        <div className="mb-8">
           <div className="relative">
             <StatCard
               label="Ventas no concretadas (mes)"
@@ -159,7 +158,7 @@ export default async function AdminDashboard() {
 
         {/* Tours de hoy */}
         <section className="mb-8">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-100 pb-2 mb-3">
             Tours de hoy
           </h2>
           {todayInstances.length === 0 ? (
@@ -170,7 +169,7 @@ export default async function AdminDashboard() {
             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-50">
+                  <tr className="border-b border-gray-100">
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Tour</th>
                     <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Tipo</th>
                     <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Pax</th>
@@ -180,7 +179,7 @@ export default async function AdminDashboard() {
                 </thead>
                 <tbody>
                   {(todayInstances as unknown as TodayInstance[]).map((inst, i) => (
-                    <tr key={inst.id} className={i > 0 ? 'border-t border-gray-50' : ''}>
+                    <tr key={inst.id} className={i > 0 ? 'border-t border-gray-100' : ''}>
                       <td className="px-4 py-3 text-gray-800">{inst.tours?.name_es ?? inst.tour_slug}</td>
                       <td className="px-4 py-3 text-gray-500 capitalize">{inst.booking_type}</td>
                       <td className="px-4 py-3 text-center text-gray-800 font-semibold">{inst.current_pax}</td>
@@ -200,7 +199,7 @@ export default async function AdminDashboard() {
 
         {/* Últimas reservas */}
         <section>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-3">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
               Últimas reservas
             </h2>
@@ -211,7 +210,7 @@ export default async function AdminDashboard() {
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-50">
+                <tr className="border-b border-gray-100">
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Código</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Cliente</th>
                   <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Tour</th>
@@ -222,7 +221,7 @@ export default async function AdminDashboard() {
               </thead>
               <tbody>
                 {(recentBookings as unknown as RecentBooking[]).map((b, i) => (
-                  <tr key={b.id} className={i > 0 ? 'border-t border-gray-50' : ''}>
+                  <tr key={b.id} className={i > 0 ? 'border-t border-gray-100' : ''}>
                     <td className="px-4 py-3 font-mono text-xs text-teal">{b.booking_code}</td>
                     <td className="px-4 py-3 text-gray-600">{b.clients?.name ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-800 max-w-[140px] truncate">
@@ -247,9 +246,9 @@ export default async function AdminDashboard() {
 function StatCard({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
   return (
     <div className={`bg-white rounded-xl border p-4 ${highlight ? 'border-orange-200 bg-orange-50' : 'border-gray-100'}`}>
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-2xl font-bold ${highlight ? 'text-orange-600' : 'text-gray-900'}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      <p className="text-xs text-gray-500 mb-1.5">{label}</p>
+      <p className={`text-3xl font-bold tracking-tight ${highlight ? 'text-orange-600' : 'text-gray-900'}`}>{value}</p>
+      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
     </div>
   );
 }

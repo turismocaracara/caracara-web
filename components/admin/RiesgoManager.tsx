@@ -35,7 +35,7 @@ function buildWaMessage(clientName: string, tourName: string, dateStr: string): 
   return `Hola ${clientName}, somos Turismo CaraCara 🦅\n\nTu tour "${tourName}" del ${fecha} aún no alcanza el mínimo de pasajeros para confirmarse.\n\nQueremos ofrecerte alternativas:\n1️⃣ Cambiar a otra fecha disponible\n2️⃣ Crédito 100% para cualquier tour futuro\n3️⃣ Tour alternativo similar\n4️⃣ Devolución\n\n¿Cuál prefieres? Respóndenos por este chat.`;
 }
 
-type PanelMode = null | 'date' | 'tour';
+type PanelMode = null | 'date' | 'tour' | 'credit' | 'refund';
 
 // ── Fila de una reserva en riesgo, con sus 4 acciones ───────────────────────
 function BookingRow({
@@ -59,6 +59,11 @@ function BookingRow({
   function submitPanel() {
     if (!newDate) return;
     onAction('reschedule', { newTourSlug: panel === 'tour' ? newTourSlug : undefined, newDate });
+    setPanel(null);
+  }
+
+  function submitConfirm(action: 'credit' | 'refund') {
+    onAction(action);
     setPanel(null);
   }
 
@@ -88,7 +93,7 @@ function BookingRow({
             type="button"
             disabled={isResolved || isLoading}
             onClick={() => setPanel(p => p === 'date' ? null : 'date')}
-            className="text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-40 transition-colors whitespace-nowrap"
+            className={`text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-40 transition-colors whitespace-nowrap ${panel === 'date' ? 'ring-1 ring-blue-300' : ''}`}
           >
             Cambiar fecha
           </button>
@@ -96,30 +101,31 @@ function BookingRow({
             type="button"
             disabled={isResolved || isLoading}
             onClick={() => setPanel(p => p === 'tour' ? null : 'tour')}
-            className="text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-1.5 rounded-lg hover:bg-purple-100 disabled:opacity-40 transition-colors whitespace-nowrap"
+            className={`text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 px-2.5 py-1.5 rounded-lg hover:bg-purple-100 disabled:opacity-40 transition-colors whitespace-nowrap ${panel === 'tour' ? 'ring-1 ring-purple-300' : ''}`}
           >
             Tour alternativo
           </button>
           <button
             type="button"
             disabled={isResolved || isLoading}
-            onClick={() => onAction('credit')}
-            className="text-xs font-medium bg-orange/10 text-orange-700 border border-orange/20 px-2.5 py-1.5 rounded-lg hover:bg-orange/20 disabled:opacity-40 transition-colors whitespace-nowrap"
+            onClick={() => setPanel(p => p === 'credit' ? null : 'credit')}
+            className={`text-xs font-medium bg-orange/10 text-orange-700 border border-orange/20 px-2.5 py-1.5 rounded-lg hover:bg-orange/20 disabled:opacity-40 transition-colors whitespace-nowrap ${panel === 'credit' ? 'ring-1 ring-orange-300' : ''}`}
           >
             {isResolved ? 'Resuelto ✓' : isLoading ? '…' : 'Crédito 100%'}
           </button>
           <button
             type="button"
             disabled={isResolved || isLoading}
-            onClick={() => onAction('refund')}
-            className="text-xs font-medium bg-red-50 text-red-700 border border-red-200 px-2.5 py-1.5 rounded-lg hover:bg-red-100 disabled:opacity-40 transition-colors whitespace-nowrap"
+            onClick={() => setPanel(p => p === 'refund' ? null : 'refund')}
+            className={`text-xs font-medium bg-red-50 text-red-700 border border-red-200 px-2.5 py-1.5 rounded-lg hover:bg-red-100 disabled:opacity-40 transition-colors whitespace-nowrap ${panel === 'refund' ? 'ring-1 ring-red-300' : ''}`}
           >
             Devolución
           </button>
         </div>
       </div>
 
-      {panel && !isResolved && (
+      {/* Panel inline: cambiar fecha */}
+      {(panel === 'date' || panel === 'tour') && !isResolved && (
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-2.5">
           {panel === 'tour' && (
             <select
@@ -156,6 +162,54 @@ function BookingRow({
           </button>
         </div>
       )}
+
+      {/* Panel inline: crédito 100% */}
+      {panel === 'credit' && !isResolved && (
+        <div className="flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-lg p-2.5">
+          <p className="text-xs text-orange-800 flex-1">
+            ¿Emitir crédito 100% para esta reserva? Esta acción no se puede deshacer.
+          </p>
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() => submitConfirm('credit')}
+            className="text-xs font-semibold bg-orange text-white px-3 py-1.5 rounded-lg hover:bg-orange-dark disabled:opacity-40 transition-colors whitespace-nowrap"
+          >
+            Sí, emitir crédito
+          </button>
+          <button
+            type="button"
+            onClick={() => setPanel(null)}
+            className="text-xs text-gray-500 hover:text-gray-800 transition-colors whitespace-nowrap"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {/* Panel inline: devolución */}
+      {panel === 'refund' && !isResolved && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-lg p-2.5">
+          <p className="text-xs text-red-800 flex-1">
+            ¿Iniciar devolución para esta reserva? Pasará a la cola de devoluciones pendientes.
+          </p>
+          <button
+            type="button"
+            disabled={isLoading}
+            onClick={() => submitConfirm('refund')}
+            className="text-xs font-semibold bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 disabled:opacity-40 transition-colors whitespace-nowrap"
+          >
+            Sí, iniciar devolución
+          </button>
+          <button
+            type="button"
+            onClick={() => setPanel(null)}
+            className="text-xs text-gray-500 hover:text-gray-800 transition-colors whitespace-nowrap"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -170,9 +224,6 @@ export default function RiesgoManager({ groups, tours }: { groups: RiskGroupRow[
     action: 'credit' | 'refund' | 'reschedule',
     extra?: { newTourSlug?: string; newDate: string }
   ) {
-    const labels = { credit: 'emitir crédito 100%', refund: 'iniciar devolución', reschedule: 'reagendar' };
-    if (!confirm(`¿Confirmas ${labels[action]} para esta reserva? Esta acción no se puede deshacer.`)) return;
-
     setLoadingId(bookingId);
     setError('');
     try {
