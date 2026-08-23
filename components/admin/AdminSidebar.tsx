@@ -38,6 +38,14 @@ function IcBanknotes() {
   );
 }
 
+function IcUser() {
+  return (
+    <svg className="w-[17px] h-[17px] flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+    </svg>
+  );
+}
+
 function IcClipboard() {
   return (
     <svg className="w-[17px] h-[17px] flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24">
@@ -95,6 +103,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/admin',              label: 'Dashboard',       icon: <IcHome /> },
       { href: '/admin/reservas',     label: 'Reservas',        icon: <IcCalendar /> },
+      { href: '/admin/pasajeros',    label: 'Pasajeros',       icon: <IcUser /> },
       { href: '/admin/riesgo',       label: 'Tours en riesgo', icon: <IcWarning /> },
       { href: '/admin/devoluciones', label: 'Devoluciones',    icon: <IcBanknotes /> },
       { href: '/admin/asignaciones', label: 'Asignaciones',    icon: <IcClipboard /> },

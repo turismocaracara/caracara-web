@@ -216,7 +216,7 @@ export default async function AdminDashboard() {
         {/* KPIs del mes */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
           <StatCard label="Reservas del mes"        value={String(monthCount)}                           href="/admin/reservas" />
-          <StatCard label="Pasajeros del mes"       value={String(monthPax)}                            href="/admin/reservas" />
+          <StatCard label="Pasajeros del mes"       value={String(monthPax)}                            href="/admin/pasajeros" />
           <StatCard label="Ingresos del mes"        value={monthTotal > 0 ? fmtCLP(monthTotal) : '—'}  href="/admin/reportes" />
           <StatCard label="Pendientes de confirmar" value={String(pendingCount)} highlight={pendingCount > 0} href="/admin/reservas?status=waiting_min" />
         </div>
