@@ -215,10 +215,10 @@ export default async function AdminDashboard() {
 
         {/* KPIs del mes */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-          <StatCard label="Reservas del mes"        value={String(monthCount)} />
-          <StatCard label="Pasajeros del mes"       value={String(monthPax)} />
-          <StatCard label="Ingresos del mes"        value={monthTotal > 0 ? fmtCLP(monthTotal) : '—'} />
-          <StatCard label="Pendientes de confirmar" value={String(pendingCount)} highlight={pendingCount > 0} />
+          <StatCard label="Reservas del mes"        value={String(monthCount)}                           href="/admin/reservas" />
+          <StatCard label="Pasajeros del mes"       value={String(monthPax)}                            href="/admin/reservas" />
+          <StatCard label="Ingresos del mes"        value={monthTotal > 0 ? fmtCLP(monthTotal) : '—'}  href="/admin/reportes" />
+          <StatCard label="Pendientes de confirmar" value={String(pendingCount)} highlight={pendingCount > 0} href="/admin/reservas?status=waiting_min" />
         </div>
 
         {/* KPIs de alerta — con link */}
@@ -384,13 +384,18 @@ export default async function AdminDashboard() {
   );
 }
 
-function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className={`bg-white rounded-xl border p-4 ${highlight ? 'border-orange-200 bg-orange-50' : 'border-gray-100'}`}>
+function StatCard({ label, value, highlight, href }: { label: string; value: string; highlight?: boolean; href?: string }) {
+  const inner = (
+    <>
       <p className="text-xs text-gray-500 mb-1.5">{label}</p>
       <p className={`text-3xl font-bold tracking-tight ${highlight ? 'text-orange-600' : 'text-gray-900'}`}>{value}</p>
-    </div>
+      {href && <p className="text-xs text-teal mt-2 opacity-0 group-hover:opacity-100 transition-opacity">Ver detalle →</p>}
+    </>
   );
+  const cls = `group bg-white rounded-xl border p-4 transition-colors ${highlight ? 'border-orange-200 bg-orange-50' : 'border-gray-100'} ${href ? 'hover:border-teal/30 cursor-pointer' : ''}`;
+  return href
+    ? <a href={href} className={cls}>{inner}</a>
+    : <div className={cls}>{inner}</div>;
 }
 
 function AlertCard({
