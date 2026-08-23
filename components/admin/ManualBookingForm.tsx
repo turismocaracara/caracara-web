@@ -43,7 +43,13 @@ function Field({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-export default function ManualBookingForm({ tours }: { tours: AdminTourOption[] }) {
+export default function ManualBookingForm({
+  tours,
+  onSuccess,
+}: {
+  tours: AdminTourOption[];
+  onSuccess?: (result: { code: string; status: string }) => void;
+}) {
   const router = useRouter();
 
   const [tourSlug, setTourSlug]       = useState(tours[0]?.slug ?? '');
@@ -119,7 +125,12 @@ export default function ManualBookingForm({ tours }: { tours: AdminTourOption[] 
       });
       const body = await res.json().catch(() => ({})) as { booking_code?: string; status?: string; error?: string };
       if (!res.ok) throw new Error(body.error ?? 'Error al crear la reserva');
-      setSuccess({ code: body.booking_code!, status: body.status! });
+      const result = { code: body.booking_code!, status: body.status! };
+      if (onSuccess) {
+        onSuccess(result);
+      } else {
+        setSuccess(result);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear la reserva');
     } finally {
