@@ -12,14 +12,16 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // Mismo criterio que el flujo público: el titular completa todo, el resto del
 // grupo solo nombre + documento.
 const PassengerSchema = z.object({
-  name:       z.string().min(2).max(120),
-  id_type:    z.enum(['rut', 'passport']),
-  id_number:  z.string().min(3).max(30),
-  email:      z.string().email().optional(),
-  phone:      z.string().min(6).max(25).optional(),
-  country:    z.string().min(2).max(60).optional(),
-  birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  is_lead:    z.boolean().default(false),
+  name:           z.string().min(2).max(120),
+  id_type:        z.enum(['rut', 'passport']).optional(),
+  id_number:      z.string().min(3).max(30).optional(),
+  email:          z.string().email().optional(),
+  phone:          z.string().min(6).max(25).optional(),
+  country:        z.string().min(2).max(60).optional(),
+  birth_date:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  is_lead:        z.boolean().default(false),
+  pickup_address: z.string().max(300).optional(),
+  hotel_name:     z.string().max(200).optional(),
 });
 
 const ManualBookingSchema = z.object({
@@ -32,14 +34,33 @@ const ManualBookingSchema = z.object({
   locale:         z.enum(['es', 'en', 'pt']).default('es'),
   notes:          z.string().max(500).optional(),
   total_amount:   z.number().int().min(0).optional(),
-}).refine(data => data.pax === data.passengers.length, {
-  message: 'pax debe coincidir con la cantidad de pasajeros',
+  agency_name:    z.string().min(2).max(120).optional(),
+  agency_id:      z.string().uuid().optional(),
+  groups_count:   z.number().int().min(1).optional(),
+  has_picnic:      z.boolean().optional(),
+  duration_hours:  z.number().positive().max(24).optional(),
+  picnic_notes:    z.string().max(500).optional(),
+  guide_notes:     z.string().max(1000).optional(),
+  outsourced:      z.boolean().optional(),
+  payment_status:  z.enum(['pending', 'partial', 'paid']).optional(),
+  payment_method:  z.enum(['cash', 'transfer', 'deposit', 'mercadopago', 'invoice', 'other']).optional(),
+  amount_paid:     z.number().int().min(0).optional(),
+  receipt_ref:     z.string().max(100).optional(),
+  price_per_person: z.number().int().min(0).optional(),
+  billing_notes:   z.string().max(500).optional(),
+}).refine(data => data.passengers.length >= 1 && data.pax >= data.passengers.length, {
+  message: 'El número de pasajeros registrados no puede superar el pax declarado',
   path:    ['pax'],
 }).refine(data => {
-  const lead = data.passengers.find(p => p.is_lead) ?? data.passengers[0];
-  return !!lead.email && !!lead.phone && !!lead.country;
+  const isAgencyGroup = !!data.agency_name && data.booking_type === 'group';
+  return data.passengers.every(p => {
+    if (isAgencyGroup) return !!p.name && !!p.phone;
+    // Solo el titular (is_lead) tiene requisitos estrictos
+    if (p.is_lead) return !!p.email && !!p.phone && !!p.country;
+    return !!p.name;
+  });
 }, {
-  message: 'El pasajero titular debe completar email, teléfono y país',
+  message: 'Faltan datos obligatorios en uno o más titulares',
   path:    ['passengers'],
 });
 
@@ -159,7 +180,16 @@ export async function POST(req: NextRequest) {
       status,
       locale:              data.locale,
       tour_languages:      data.tour_languages ?? [data.locale],
-      internal_notes:      data.notes ?? null,
+      internal_notes:      data.notes         ?? null,
+      agency_name:         data.agency_name   ?? null,
+      agency_id:           data.agency_id     ?? null,
+      groups_count:        data.groups_count  ?? null,
+      price_per_person:    data.price_per_person ?? null,
+      payment_status:      data.payment_status  ?? null,
+      payment_method:      data.payment_method  ?? null,
+      amount_paid:         data.amount_paid     ?? null,
+      receipt_ref:         data.receipt_ref     ?? null,
+      billing_notes:       data.billing_notes   ?? null,
     })
     .select('id, booking_code, status')
     .single();
@@ -170,18 +200,59 @@ export async function POST(req: NextRequest) {
   }
 
   const passengersToInsert = data.passengers.map((p, i) => ({
-    booking_id: booking.id,
-    name:       p.name,
-    id_type:    p.id_type,
-    id_number:  p.id_number,
-    email:      p.email?.toLowerCase() ?? null,
-    phone:      p.phone ?? null,
-    country:    p.country ?? null,
-    birth_date: p.birth_date ?? null,
-    is_lead:    i === 0 || p.is_lead,
+    booking_id:     booking.id,
+    name:           p.name,
+    id_type:        p.id_type   ?? null,
+    id_number:      p.id_number ?? null,
+    email:          p.email?.toLowerCase() ?? null,
+    phone:          p.phone   ?? null,
+    country:        p.country ?? null,
+    birth_date:     p.birth_date     ?? null,
+    pickup_address: p.pickup_address ?? null,
+    hotel_name:     p.hotel_name     ?? null,
+    is_lead:        i === 0 || p.is_lead,
   }));
 
   await supabase.from('passengers').insert(passengersToInsert);
+
+  // ── Notas al guía + externalización → tour_instance ──────────────────────
+  if (data.guide_notes || data.outsourced !== undefined) {
+    await supabase.from('tour_instances').update({
+      ...(data.guide_notes !== undefined && { guide_notes: data.guide_notes }),
+      ...(data.outsourced  !== undefined && { outsourced:  data.outsourced }),
+    }).eq('id', instanceId);
+  }
+
+  // ── Historial picnic + duración ───────────────────────────────────────────
+  if (data.has_picnic !== undefined) {
+    await supabase.from('tour_picnic_history').insert({
+      tour_slug:  data.tour_slug,
+      booking_id: booking.id,
+      had_picnic: data.has_picnic,
+      notes:      data.picnic_notes ?? null,
+    });
+
+    // Calcular nuevo promedio y actualizar el tour
+    const { data: history } = await supabase
+      .from('tour_picnic_history')
+      .select('had_picnic')
+      .eq('tour_slug', data.tour_slug);
+
+    if (history && history.length > 0) {
+      const trueCount = history.filter((h: { had_picnic: boolean }) => h.had_picnic).length;
+      const newDefault = trueCount / history.length >= 0.5;
+      await supabase.from('tours').update({ has_picnic: newDefault }).eq('slug', data.tour_slug);
+    }
+  }
+
+  if (data.duration_hours !== undefined) {
+    await supabase.from('tour_duration_history').insert({
+      tour_slug:      data.tour_slug,
+      booking_id:     booking.id,
+      duration_hours: data.duration_hours,
+    });
+    await supabase.from('tours').update({ duration_hours: data.duration_hours }).eq('slug', data.tour_slug);
+  }
 
   // Email de confirmación al cliente (best-effort, no bloquea la respuesta)
   const tourName = data.locale === 'en' ? tour.name_en : data.locale === 'pt' ? tour.name_pt : tour.name_es;

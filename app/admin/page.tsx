@@ -5,7 +5,9 @@ import { isBookingPaid, sweepExpiredHolds } from '@/lib/booking-engine';
 import { getSeason } from '@/lib/pickup-route';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import NewBookingButton from '@/components/admin/NewBookingButton';
+import RecentBookingsTable, { type RecentBookingRow } from '@/components/admin/RecentBookingsTable';
 import type { AdminTourOption } from '@/components/admin/ManualBookingForm';
+import type { Agency } from '@/components/admin/AgencyRegistrationModal';
 
 interface TodayInstance {
   id: string;
@@ -29,17 +31,6 @@ interface UpcomingInstance {
   tours: { name_es: string } | null;
 }
 
-interface RecentBooking {
-  id: string;
-  booking_code: string;
-  booking_type: string;
-  pax: number;
-  status: string;
-  total_amount: number | null;
-  created_at: string;
-  tour_instances: { tour_slug: string; date: string; tours: { name_es: string } | null } | null;
-  clients: { name: string } | null;
-}
 
 function fmtCLP(n: number) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n);
@@ -93,6 +84,7 @@ export default async function AdminDashboard() {
     atRiskRes,
     schedulesRes,
     activeToursRes,
+    agenciesRes,
   ] = await Promise.all([
     // Tours de hoy
     supabase
@@ -163,9 +155,15 @@ export default async function AdminDashboard() {
     // Tours activos para modal de nueva reserva
     supabase
       .from('tours')
-      .select('slug, name_es')
+      .select('slug, name_es, has_picnic, duration_hours')
       .eq('active', true)
       .order('name_es'),
+
+    // Agencias registradas para autocomplete
+    supabase
+      .from('agencies')
+      .select('id, fantasy_name, rut, razon_social, giro, address, comuna, city, billing_email, phone, contact_name')
+      .order('fantasy_name'),
   ]);
 
   const todayInstances  = todayInstancesRes.data ?? [];
@@ -177,7 +175,24 @@ export default async function AdminDashboard() {
   const atRiskCount     = atRiskRes.count ?? 0;
   const abandonedCount  = abandonedData.length;
   const abandonedAmount = abandonedData.reduce((s, b) => s + (b.total_amount ?? 0), 0);
-  const activeTours     = (activeToursRes.data ?? []) as AdminTourOption[];
+  const activeTours = (activeToursRes.data ?? []) as AdminTourOption[];
+  const agencies    = (agenciesRes.data ?? []) as Agency[];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recentRows: RecentBookingRow[] = ((recentBookings) as unknown as Record<string, any>[]).map(b => {
+    const inst   = Array.isArray(b.tour_instances) ? b.tour_instances[0] : b.tour_instances;
+    const client = Array.isArray(b.clients)        ? b.clients[0]        : b.clients;
+    return {
+      id:           b.id           as string,
+      booking_code: b.booking_code as string,
+      booking_type: b.booking_type as string,
+      pax:          b.pax          as number,
+      status:       b.status       as string,
+      tour_name:    (inst?.tours?.name_es ?? inst?.tour_slug ?? '—') as string,
+      tour_date:    (inst?.date ?? '')                               as string,
+      client_name:  (client?.name ?? null)                          as string | null,
+    };
+  });
 
   // Mapa tourSlug → pickup_time para "Tours de hoy"
   const scheduleMap: Record<string, string> = {};
@@ -210,7 +225,7 @@ export default async function AdminDashboard() {
               {new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
-          {canCreateManual && <NewBookingButton tours={activeTours} />}
+          {canCreateManual && <NewBookingButton tours={activeTours} agencies={agencies} />}
         </div>
 
         {/* KPIs del mes */}
@@ -348,36 +363,7 @@ export default async function AdminDashboard() {
               Ver todas →
             </a>
           </div>
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Código</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Cliente</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Tour</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Fecha tour</th>
-                  <th className="text-center px-4 py-2.5 text-xs font-medium text-gray-500">Pax</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(recentBookings as unknown as RecentBooking[]).map((b, i) => (
-                  <tr key={b.id} className={i > 0 ? 'border-t border-gray-100' : ''}>
-                    <td className="px-4 py-3 font-mono text-xs text-teal">{b.booking_code}</td>
-                    <td className="px-4 py-3 text-gray-600">{b.clients?.name ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-800 max-w-[140px] truncate">
-                      {b.tour_instances?.tours?.name_es ?? b.tour_instances?.tour_slug ?? '—'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {b.tour_instances?.date ? fmtDate(b.tour_instances.date) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-center text-gray-800">{b.pax}</td>
-                    <td className="px-4 py-3"><StatusBadge status={b.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <RecentBookingsTable bookings={recentRows} />
         </section>
       </main>
     </div>

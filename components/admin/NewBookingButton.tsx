@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ManualBookingForm, { type AdminTourOption } from './ManualBookingForm';
+import { type Agency } from './AgencyRegistrationModal';
 
-export default function NewBookingButton({ tours }: { tours: AdminTourOption[] }) {
+export default function NewBookingButton({ tours, agencies = [] }: { tours: AdminTourOption[]; agencies?: Agency[] }) {
   const [open, setOpen]       = useState(false);
   const [success, setSuccess] = useState<{ code: string; status: string } | null>(null);
   const router                = useRouter();
@@ -107,7 +108,7 @@ export default function NewBookingButton({ tours }: { tours: AdminTourOption[] }
                   </div>
                 </div>
               ) : (
-                <ManualBookingForm tours={tours} onSuccess={handleSuccess} />
+                <ManualBookingForm tours={tours} agencies={agencies} onSuccess={handleSuccess} />
               )}
             </div>
           </div>
