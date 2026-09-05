@@ -40,8 +40,16 @@ const ManualBookingSchema = z.object({
   has_picnic:      z.boolean().optional(),
   duration_hours:  z.number().positive().max(24).optional(),
   picnic_notes:    z.string().max(500).optional(),
-  guide_notes:     z.string().max(1000).optional(),
-  outsourced:      z.boolean().optional(),
+  guide_notes:      z.string().max(1000).optional(),
+  outsourced:       z.boolean().optional(),
+  // Operaciones CaraCara
+  guide_id:         z.string().uuid().optional(),
+  van_id:           z.string().uuid().optional(),
+  guide_fee:        z.number().int().min(0).optional(),
+  // Operaciones externas
+  provider_id:      z.string().uuid().optional(),
+  provider_fee:     z.number().int().min(0).optional(),
+  provider_scope:   z.string().max(1000).optional(),
   payment_status:  z.enum(['pending', 'partial', 'paid']).optional(),
   payment_method:  z.enum(['cash', 'transfer', 'deposit', 'mercadopago', 'invoice', 'other']).optional(),
   amount_paid:     z.number().int().min(0).optional(),
@@ -215,12 +223,25 @@ export async function POST(req: NextRequest) {
 
   await supabase.from('passengers').insert(passengersToInsert);
 
-  // ── Notas al guía + externalización → tour_instance ──────────────────────
-  if (data.guide_notes || data.outsourced !== undefined) {
-    await supabase.from('tour_instances').update({
-      ...(data.guide_notes !== undefined && { guide_notes: data.guide_notes }),
-      ...(data.outsourced  !== undefined && { outsourced:  data.outsourced }),
-    }).eq('id', instanceId);
+  // ── Operaciones → tour_instance ──────────────────────────────────────────
+  const instanceUpdate: Record<string, unknown> = {};
+  if (data.guide_notes   !== undefined) instanceUpdate.guide_notes    = data.guide_notes;
+  if (data.outsourced    !== undefined) instanceUpdate.outsourced      = data.outsourced;
+  if (data.van_id        !== undefined) instanceUpdate.van_id          = data.van_id;
+  if (data.guide_fee     !== undefined) instanceUpdate.guide_fee       = data.guide_fee;
+  if (data.provider_id   !== undefined) instanceUpdate.provider_id     = data.provider_id;
+  if (data.provider_fee  !== undefined) instanceUpdate.provider_fee    = data.provider_fee;
+  if (data.provider_scope !== undefined) instanceUpdate.provider_scope = data.provider_scope;
+  if (Object.keys(instanceUpdate).length > 0) {
+    await supabase.from('tour_instances').update(instanceUpdate).eq('id', instanceId);
+  }
+
+  // ── Asignación de guía interno → tour_assignments ─────────────────────────
+  if (data.guide_id) {
+    await supabase.from('tour_assignments').upsert(
+      { tour_instance_id: instanceId, team_member_id: data.guide_id, role_in_tour: 'guide_driver' },
+      { onConflict: 'tour_instance_id' }
+    );
   }
 
   // ── Historial picnic + duración ───────────────────────────────────────────

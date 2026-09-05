@@ -85,6 +85,9 @@ export default async function AdminDashboard() {
     schedulesRes,
     activeToursRes,
     agenciesRes,
+    guidesRes,
+    vansRes,
+    serviceProvidersRes,
   ] = await Promise.all([
     // Tours de hoy
     supabase
@@ -164,6 +167,27 @@ export default async function AdminDashboard() {
       .from('agencies')
       .select('id, fantasy_name, rut, razon_social, giro, address, comuna, city, billing_email, phone, contact_name')
       .order('fantasy_name'),
+
+    // Guías internos (miembros del equipo activos)
+    supabase
+      .from('team_members')
+      .select('id, name, role')
+      .eq('active', true)
+      .order('name'),
+
+    // Vans activas
+    supabase
+      .from('vans')
+      .select('id, name, plate, capacity')
+      .eq('active', true)
+      .order('name'),
+
+    // Proveedores externos activos
+    supabase
+      .from('service_providers')
+      .select('id, name, type, phone, email, rut, notes')
+      .eq('active', true)
+      .order('name'),
   ]);
 
   const todayInstances  = todayInstancesRes.data ?? [];
@@ -175,8 +199,11 @@ export default async function AdminDashboard() {
   const atRiskCount     = atRiskRes.count ?? 0;
   const abandonedCount  = abandonedData.length;
   const abandonedAmount = abandonedData.reduce((s, b) => s + (b.total_amount ?? 0), 0);
-  const activeTours = (activeToursRes.data ?? []) as AdminTourOption[];
-  const agencies    = (agenciesRes.data ?? []) as Agency[];
+  const activeTours       = (activeToursRes.data      ?? []) as AdminTourOption[];
+  const agencies          = (agenciesRes.data          ?? []) as Agency[];
+  const guides            = (guidesRes.data            ?? []) as { id: string; name: string; role: string }[];
+  const vans              = (vansRes.data              ?? []) as { id: string; name: string; plate: string | null; capacity: number }[];
+  const serviceProviders  = (serviceProvidersRes.data  ?? []) as import('@/components/admin/ServiceProviderModal').ServiceProvider[];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recentRows: RecentBookingRow[] = ((recentBookings) as unknown as Record<string, any>[]).map(b => {
@@ -225,7 +252,15 @@ export default async function AdminDashboard() {
               {new Date().toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
-          {canCreateManual && <NewBookingButton tours={activeTours} agencies={agencies} />}
+          {canCreateManual && (
+            <NewBookingButton
+              tours={activeTours}
+              agencies={agencies}
+              guides={guides}
+              vans={vans}
+              serviceProviders={serviceProviders}
+            />
+          )}
         </div>
 
         {/* KPIs del mes */}

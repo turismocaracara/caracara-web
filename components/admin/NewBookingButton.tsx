@@ -4,8 +4,21 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import ManualBookingForm, { type AdminTourOption } from './ManualBookingForm';
 import { type Agency } from './AgencyRegistrationModal';
+import { type ServiceProvider } from './ServiceProviderModal';
 
-export default function NewBookingButton({ tours, agencies = [] }: { tours: AdminTourOption[]; agencies?: Agency[] }) {
+export default function NewBookingButton({
+  tours,
+  agencies = [],
+  guides = [],
+  vans = [],
+  serviceProviders = [],
+}: {
+  tours:             AdminTourOption[];
+  agencies?:         Agency[];
+  guides?:           { id: string; name: string; role: string }[];
+  vans?:             { id: string; name: string; plate: string | null; capacity: number }[];
+  serviceProviders?: ServiceProvider[];
+}) {
   const [open, setOpen]       = useState(false);
   const [success, setSuccess] = useState<{ code: string; status: string } | null>(null);
   const router                = useRouter();
@@ -108,7 +121,14 @@ export default function NewBookingButton({ tours, agencies = [] }: { tours: Admi
                   </div>
                 </div>
               ) : (
-                <ManualBookingForm tours={tours} agencies={agencies} onSuccess={handleSuccess} />
+                <ManualBookingForm
+                  tours={tours}
+                  agencies={agencies}
+                  guides={guides}
+                  vans={vans}
+                  serviceProviders={serviceProviders}
+                  onSuccess={handleSuccess}
+                />
               )}
             </div>
           </div>

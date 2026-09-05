@@ -4,6 +4,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import BookingCalendar from '@/components/BookingCalendar';
 import AgencyRegistrationModal, { type Agency } from './AgencyRegistrationModal';
+import ServiceProviderModal, { type ServiceProvider } from './ServiceProviderModal';
+
+export interface GuideOption { id: string; name: string; role: string; }
+export interface VanOption   { id: string; name: string; plate: string | null; capacity: number; }
 
 export interface AdminTourOption {
   slug:           string;
@@ -212,10 +216,16 @@ function TourSearchDropdown({
 export default function ManualBookingForm({
   tours: initialTours,
   agencies: initialAgencies = [],
+  guides = [],
+  vans = [],
+  serviceProviders: initialProviders = [],
   onSuccess,
 }: {
-  tours:      AdminTourOption[];
-  agencies?:  Agency[];
+  tours:             AdminTourOption[];
+  agencies?:         Agency[];
+  guides?:           GuideOption[];
+  vans?:             VanOption[];
+  serviceProviders?: ServiceProvider[];
   onSuccess?: (result: { code: string; status: string }) => void;
 }) {
   const router = useRouter();
@@ -250,8 +260,19 @@ export default function ManualBookingForm({
   const [tourLanguages, setTourLanguages] = useState<('es'|'en'|'pt')[]>(['es']);
 
   // ── Paso 3: Operaciones ───────────────────────────────────────────────────
-  const [outsourced, setOutsourced] = useState(false);
-  const [guideNotes, setGuideNotes] = useState('');
+  const [outsourced,       setOutsourced]       = useState(false);
+  const [guideNotes,       setGuideNotes]       = useState('');
+  // CaraCara
+  const [guideId,          setGuideId]          = useState('');
+  const [vanId,            setVanId]            = useState('');
+  const [guideFee,         setGuideFee]         = useState('');
+  // Externo
+  const [providerList,     setProviderList]     = useState<ServiceProvider[]>(initialProviders);
+  const [providerSearch,   setProviderSearch]   = useState('');
+  const [selectedProvider, setSelectedProvider] = useState<ServiceProvider | null>(null);
+  const [showProviderModal,setShowProviderModal]= useState(false);
+  const [providerFee,      setProviderFee]      = useState('');
+  const [providerScope,    setProviderScope]    = useState('');
 
   // ── Paso 4: Cobranza ──────────────────────────────────────────────────────
   const [totalAmount,   setTotalAmount]   = useState('');
@@ -438,8 +459,14 @@ export default function ManualBookingForm({
           has_picnic:     hasPicnic,
           duration_hours: durationHours ? Number(durationHours) : undefined,
           picnic_notes:   picnicNotes || undefined,
-          guide_notes:    guideNotes  || undefined,
-          outsourced:     outsourced  || undefined,
+          guide_notes:    guideNotes     || undefined,
+          outsourced:     outsourced     || undefined,
+          guide_id:       guideId        || undefined,
+          van_id:         vanId          || undefined,
+          guide_fee:      guideFee       ? Number(guideFee)    : undefined,
+          provider_id:    selectedProvider?.id || undefined,
+          provider_fee:   providerFee    ? Number(providerFee) : undefined,
+          provider_scope: providerScope  || undefined,
           total_amount:     totalAmount ? Number(totalAmount) : undefined,
           price_per_person: pricePerPerson ?? undefined,
           payment_status:   paymentStatus  || undefined,
@@ -795,22 +822,128 @@ export default function ManualBookingForm({
             PASO 3 — Operaciones
         ══════════════════════════════════════════════════════════════════ */}
         {step === 3 && (
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-gray-400">Esta información es opcional y se puede completar después.</p>
+          <div className="flex flex-col gap-5">
+            <p className="text-xs text-gray-400">Información opcional — se puede completar después.</p>
 
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-medium text-gray-600 w-32 flex-shrink-0">¿Tour externalizado?</span>
-              <Toggle value={outsourced} onChange={setOutsourced} />
-              <span className={`text-xs font-medium ${outsourced ? 'text-orange' : 'text-gray-400'}`}>
-                {outsourced ? 'Sí — operado por otro proveedor' : 'No'}
-              </span>
+            {/* Toggle CaraCara / Externalizado */}
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { v:false, l:'Operado por CaraCara',   d:'Guía y vehículo propio' },
+                { v:true,  l:'Servicio externalizado', d:'Agencia o guía externo' },
+              ] as const).map(opt => (
+                <button key={String(opt.v)} type="button" onClick={() => setOutsourced(opt.v)}
+                  className={`flex flex-col gap-0.5 text-left border-2 rounded-xl px-4 py-3 transition-all ${
+                    outsourced === opt.v ? 'border-teal bg-teal/5 shadow-sm' : 'border-gray-200 hover:border-gray-300'
+                  }`}>
+                  <span className={`text-xs font-semibold ${outsourced===opt.v ? 'text-teal' : 'text-gray-600'}`}>{opt.l}</span>
+                  <span className="text-[11px] text-gray-400">{opt.d}</span>
+                </button>
+              ))}
             </div>
 
-            <Field label="Notas al guía / conductor">
-              <textarea rows={4} value={guideNotes} onChange={e => setGuideNotes(e.target.value)}
-                placeholder="Instrucciones de ruta, necesidades especiales, puntos de pickup en orden…"
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-            </Field>
+            {/* ── CaraCara ─────────────────────────────────────────────────── */}
+            {!outsourced && (
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Guía / conductor">
+                    <select value={guideId} onChange={e => setGuideId(e.target.value)} className={selectClass}>
+                      <option value="">— Sin asignar —</option>
+                      {guides.map(g => (
+                        <option key={g.id} value={g.id}>{g.name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Vehículo">
+                    <select value={vanId} onChange={e => setVanId(e.target.value)} className={selectClass}>
+                      <option value="">— Sin asignar —</option>
+                      {vans.map(v => (
+                        <option key={v.id} value={v.id}>
+                          {v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Honorario al guía (CLP)" hint="Lo que se le paga al guía por este tour">
+                  <input type="number" min={0} value={guideFee} onChange={e => setGuideFee(e.target.value)}
+                    placeholder="Ej: 45000" className={`${inputClass} max-w-xs`} />
+                </Field>
+                <Field label="Notas al equipo">
+                  <textarea rows={3} value={guideNotes} onChange={e => setGuideNotes(e.target.value)}
+                    placeholder="Instrucciones de ruta, puntos de pickup en orden, necesidades especiales…"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+                </Field>
+              </div>
+            )}
+
+            {/* ── Externalizado ─────────────────────────────────────────────── */}
+            {outsourced && (
+              <div className="flex flex-col gap-4">
+                {/* Proveedor */}
+                <Field label="Proveedor del servicio">
+                  <div className="relative">
+                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                    </svg>
+                    <input
+                      list="provider-suggestions"
+                      value={providerSearch}
+                      onChange={e => {
+                        setProviderSearch(e.target.value);
+                        const match = providerList.find(p => p.name.toLowerCase() === e.target.value.trim().toLowerCase());
+                        setSelectedProvider(match ?? null);
+                      }}
+                      placeholder="Buscar proveedor registrado…"
+                      className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-teal w-full"
+                    />
+                    <datalist id="provider-suggestions">
+                      {providerList.map(p => <option key={p.id} value={p.name} />)}
+                    </datalist>
+                  </div>
+                  {selectedProvider && (
+                    <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>
+                        {selectedProvider.type === 'guide' ? 'Guía externo' : 'Agencia'}
+                        {selectedProvider.phone && ` · ${selectedProvider.phone}`}
+                      </span>
+                    </div>
+                  )}
+                  {!selectedProvider && providerSearch.trim().length >= 2 && (
+                    <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+                      <p className="text-xs text-amber-700 flex-1">
+                        <span className="font-semibold">&ldquo;{providerSearch}&rdquo;</span> no está registrado.
+                      </p>
+                      <button type="button" onClick={() => setShowProviderModal(true)}
+                        className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">
+                        Registrar proveedor
+                      </button>
+                    </div>
+                  )}
+                </Field>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Field label="Valor del servicio (CLP)" hint="Lo que cobra el proveedor">
+                    <input type="number" min={0} value={providerFee} onChange={e => setProviderFee(e.target.value)}
+                      placeholder="Ej: 120000" className={inputClass} />
+                  </Field>
+                </div>
+
+                <Field label="¿Qué contempla el servicio?" hint="Transporte, guía, entradas, alimentación, etc.">
+                  <textarea rows={3} value={providerScope} onChange={e => setProviderScope(e.target.value)}
+                    placeholder="Describe qué incluye: traslado, guiado, entradas al parque, almuerzo…"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+                </Field>
+
+                <Field label="Notas adicionales al proveedor">
+                  <textarea rows={2} value={guideNotes} onChange={e => setGuideNotes(e.target.value)}
+                    placeholder="Instrucciones especiales, puntos de encuentro, requerimientos del cliente…"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+                </Field>
+              </div>
+            )}
           </div>
         )}
 
@@ -922,6 +1055,19 @@ export default function ManualBookingForm({
           initialName={agencyName}
           onClose={() => setShowAgencyModal(false)}
           onSaved={handleAgencySaved}
+        />
+      )}
+
+      {showProviderModal && (
+        <ServiceProviderModal
+          initialName={providerSearch}
+          onClose={() => setShowProviderModal(false)}
+          onSaved={provider => {
+            setProviderList(prev => [...prev, provider].sort((a,b) => a.name.localeCompare(b.name,'es')));
+            setSelectedProvider(provider);
+            setProviderSearch(provider.name);
+            setShowProviderModal(false);
+          }}
         />
       )}
     </>
