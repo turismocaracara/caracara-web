@@ -46,8 +46,9 @@ const ManualBookingSchema = z.object({
   guide_id:         z.string().uuid().optional(),
   van_id:           z.string().uuid().optional(),
   guide_fee:        z.number().int().min(0).optional(),
-  // Operaciones externas
-  provider_id:      z.string().uuid().optional(),
+  // Operaciones externas — solo uno de los dos estará relleno
+  op_agency_id:     z.string().uuid().optional(),   // agencia ya registrada que opera el tour
+  op_provider_id:   z.string().uuid().optional(),   // proveedor nuevo (service_providers)
   provider_fee:     z.number().int().min(0).optional(),
   provider_scope:   z.string().max(1000).optional(),
   payment_status:  z.enum(['pending', 'partial', 'paid']).optional(),
@@ -229,8 +230,9 @@ export async function POST(req: NextRequest) {
   if (data.outsourced    !== undefined) instanceUpdate.outsourced      = data.outsourced;
   if (data.van_id        !== undefined) instanceUpdate.van_id          = data.van_id;
   if (data.guide_fee     !== undefined) instanceUpdate.guide_fee       = data.guide_fee;
-  if (data.provider_id   !== undefined) instanceUpdate.provider_id     = data.provider_id;
-  if (data.provider_fee  !== undefined) instanceUpdate.provider_fee    = data.provider_fee;
+  if (data.op_agency_id   !== undefined) instanceUpdate.op_agency_id   = data.op_agency_id;
+  if (data.op_provider_id !== undefined) instanceUpdate.op_provider_id = data.op_provider_id;
+  if (data.provider_fee   !== undefined) instanceUpdate.provider_fee   = data.provider_fee;
   if (data.provider_scope !== undefined) instanceUpdate.provider_scope = data.provider_scope;
   if (Object.keys(instanceUpdate).length > 0) {
     await supabase.from('tour_instances').update(instanceUpdate).eq('id', instanceId);

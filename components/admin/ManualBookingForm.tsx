@@ -266,9 +266,11 @@ export default function ManualBookingForm({
   const [guideId,          setGuideId]          = useState('');
   const [vanId,            setVanId]            = useState('');
   const [guideFee,         setGuideFee]         = useState('');
-  // Externo
+  // Externo — dropdown unificado: agencias ya registradas + service_providers
   const [providerList,     setProviderList]     = useState<ServiceProvider[]>(initialProviders);
   const [providerSearch,   setProviderSearch]   = useState('');
+  // selectedOpAgency → agencia ya registrada; selectedProvider → proveedor nuevo
+  const [selectedOpAgency, setSelectedOpAgency] = useState<Agency | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<ServiceProvider | null>(null);
   const [showProviderModal,setShowProviderModal]= useState(false);
   const [providerFee,      setProviderFee]      = useState('');
@@ -464,8 +466,9 @@ export default function ManualBookingForm({
           guide_id:       guideId        || undefined,
           van_id:         vanId          || undefined,
           guide_fee:      guideFee       ? Number(guideFee)    : undefined,
-          provider_id:    selectedProvider?.id || undefined,
-          provider_fee:   providerFee    ? Number(providerFee) : undefined,
+          op_agency_id:   selectedOpAgency?.id  || undefined,
+          op_provider_id: selectedProvider?.id  || undefined,
+          provider_fee:   providerFee ? Number(providerFee) : undefined,
           provider_scope: providerScope  || undefined,
           total_amount:     totalAmount ? Number(totalAmount) : undefined,
           price_per_person: pricePerPerson ?? undefined,
@@ -879,39 +882,57 @@ export default function ManualBookingForm({
             {/* ── Externalizado ─────────────────────────────────────────────── */}
             {outsourced && (
               <div className="flex flex-col gap-4">
-                {/* Proveedor */}
-                <Field label="Proveedor del servicio">
+                {/* Proveedor — dropdown unificado: agencias + service_providers */}
+                <Field label="Proveedor del servicio" hint="Agencias registradas o guías / empresas externas">
                   <div className="relative">
                     <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
                     </svg>
                     <input
-                      list="provider-suggestions"
+                      list="op-provider-suggestions"
                       value={providerSearch}
                       onChange={e => {
-                        setProviderSearch(e.target.value);
-                        const match = providerList.find(p => p.name.toLowerCase() === e.target.value.trim().toLowerCase());
-                        setSelectedProvider(match ?? null);
+                        const val = e.target.value;
+                        setProviderSearch(val);
+                        const matchAgency = agencyList.find(a => a.fantasy_name.toLowerCase() === val.trim().toLowerCase());
+                        const matchProv   = providerList.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
+                        setSelectedOpAgency(matchAgency ?? null);
+                        setSelectedProvider(matchProv   ?? null);
                       }}
-                      placeholder="Buscar proveedor registrado…"
+                      placeholder="Buscar agencia o proveedor…"
                       className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-teal w-full"
                     />
-                    <datalist id="provider-suggestions">
-                      {providerList.map(p => <option key={p.id} value={p.name} />)}
+                    <datalist id="op-provider-suggestions">
+                      {agencyList.map(a  => <option key={`ag-${a.id}`}  value={a.fantasy_name} />)}
+                      {providerList.map(p => <option key={`sp-${p.id}`} value={p.name} />)}
                     </datalist>
                   </div>
-                  {selectedProvider && (
+
+                  {/* Match en agencias */}
+                  {selectedOpAgency && (
+                    <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Agencia registrada · <span className="font-medium">{selectedOpAgency.razon_social}</span></span>
+                    </div>
+                  )}
+
+                  {/* Match en service_providers */}
+                  {!selectedOpAgency && selectedProvider && (
                     <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
                       <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       <span>
-                        {selectedProvider.type === 'guide' ? 'Guía externo' : 'Agencia'}
+                        {selectedProvider.type === 'guide' ? 'Guía externo' : 'Empresa / proveedor'}
                         {selectedProvider.phone && ` · ${selectedProvider.phone}`}
                       </span>
                     </div>
                   )}
-                  {!selectedProvider && providerSearch.trim().length >= 2 && (
+
+                  {/* Sin match → oferta de registro */}
+                  {!selectedOpAgency && !selectedProvider && providerSearch.trim().length >= 2 && (
                     <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
                       <p className="text-xs text-amber-700 flex-1">
                         <span className="font-semibold">&ldquo;{providerSearch}&rdquo;</span> no está registrado.
