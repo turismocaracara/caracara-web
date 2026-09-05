@@ -44,21 +44,46 @@ const PAYMENT_METHODS = [
   { v:'other',       l:'Otro'          },
 ] as const;
 
+const STEP_LABELS = ['Tour', 'Pasajeros', 'Operaciones', 'Cobranza'];
+
 const inputClass  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full';
 const selectClass = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full bg-white';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Componentes auxiliares
+// ─────────────────────────────────────────────────────────────────────────────
 
-function SectionHeader({ n, title, subtitle }: { n: number; title: string; subtitle?: string }) {
+function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="flex items-start gap-3 mb-1">
-      <span className="mt-0.5 w-6 h-6 rounded-full bg-teal text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">
-        {n}
-      </span>
-      <div>
-        <h3 className="font-semibold text-gray-800 text-sm">{title}</h3>
-        {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
-      </div>
+    <div className="flex items-center mb-6">
+      {STEP_LABELS.map((label, i) => {
+        const n      = i + 1;
+        const done   = n < current;
+        const active = n === current;
+        return (
+          <div key={n} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center gap-1">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-all ${
+                done   ? 'bg-teal text-white' :
+                active ? 'bg-teal text-white ring-4 ring-teal/20' :
+                         'bg-gray-100 text-gray-400'
+              }`}>
+                {done ? (
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : n}
+              </div>
+              <span className={`text-[10px] font-medium hidden sm:block whitespace-nowrap transition-colors ${
+                active ? 'text-teal' : done ? 'text-gray-500' : 'text-gray-300'
+              }`}>{label}</span>
+            </div>
+            {i < STEP_LABELS.length - 1 && (
+              <div className={`flex-1 h-0.5 mx-2 mb-4 rounded-full transition-colors ${done ? 'bg-teal' : 'bg-gray-100'}`} />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -96,25 +121,25 @@ function Toggle({ value, onChange }: { value:boolean; onChange:(v:boolean)=>void
   );
 }
 
-// ── Selector de tour con dropdown propio ──────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Dropdown de tour
+// ─────────────────────────────────────────────────────────────────────────────
 
 function TourSearchDropdown({
   tours, selected, onSelect, onQuickCreate, creating,
 }: {
-  tours:          AdminTourOption[];
-  selected:       AdminTourOption | null;
-  onSelect:       (t: AdminTourOption) => void;
-  onQuickCreate:  (name: string)       => void;
-  creating:       boolean;
+  tours:         AdminTourOption[];
+  selected:      AdminTourOption | null;
+  onSelect:      (t: AdminTourOption | null) => void;
+  onQuickCreate: (name: string) => void;
+  creating:      boolean;
 }) {
-  const [query,    setQuery]    = useState(selected?.name_es ?? '');
-  const [open,     setOpen]     = useState(false);
-  const containerRef            = useRef<HTMLDivElement>(null);
+  const [query,  setQuery]  = useState(selected?.name_es ?? '');
+  const [open,   setOpen]   = useState(false);
+  const containerRef        = useRef<HTMLDivElement>(null);
 
-  // Sincronizar si selected cambia desde fuera (e.g. quick-create)
   useEffect(() => { setQuery(selected?.name_es ?? ''); }, [selected]);
 
-  // Cerrar al click fuera
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
@@ -123,40 +148,24 @@ function TourSearchDropdown({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const filtered = query.trim().length === 0
+  const filtered  = query.trim().length === 0
     ? tours
     : tours.filter(t => t.name_es.toLowerCase().includes(query.toLowerCase()));
-
-  const exactMatch  = tours.find(t => t.name_es.toLowerCase() === query.trim().toLowerCase());
-  const canCreate   = query.trim().length >= 2 && !exactMatch;
-
-  function handleSelect(t: AdminTourOption) {
-    onSelect(t);
-    setQuery(t.name_es);
-    setOpen(false);
-  }
-
-  function handleCreate() {
-    onQuickCreate(query.trim());
-    setOpen(false);
-  }
+  const exactMatch = tours.find(t => t.name_es.toLowerCase() === query.trim().toLowerCase());
+  const canCreate  = query.trim().length >= 2 && !exactMatch;
 
   return (
     <div ref={containerRef} className="relative">
-      {/* Input */}
       <div className="relative">
         <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
         </svg>
-        <input
-          value={query}
-          onFocus={() => setOpen(true)}
-          onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onSelect(null as unknown as AdminTourOption); }}
+        <input value={query} onFocus={() => setOpen(true)}
+          onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onSelect(null); }}
           placeholder="Buscar tour…"
-          className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-teal w-full"
-        />
+          className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-teal w-full" />
         {selected && (
-          <button type="button" onClick={() => { setQuery(''); onSelect(null as unknown as AdminTourOption); setOpen(false); }}
+          <button type="button" onClick={() => { setQuery(''); onSelect(null); setOpen(false); }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -164,15 +173,11 @@ function TourSearchDropdown({
           </button>
         )}
       </div>
-
-      {/* Dropdown */}
       {open && (
         <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-52 overflow-y-auto">
-          {filtered.length === 0 && !canCreate && (
-            <p className="text-xs text-gray-400 px-4 py-3">Sin resultados.</p>
-          )}
+          {filtered.length === 0 && !canCreate && <p className="text-xs text-gray-400 px-4 py-3">Sin resultados.</p>}
           {filtered.map(t => (
-            <button key={t.slug} type="button" onMouseDown={() => handleSelect(t)}
+            <button key={t.slug} type="button" onMouseDown={() => { onSelect(t); setQuery(t.name_es); setOpen(false); }}
               className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 hover:bg-teal/5 transition-colors ${
                 selected?.slug === t.slug ? 'bg-teal/5 font-medium text-teal' : 'text-gray-700'
               }`}>
@@ -186,7 +191,7 @@ function TourSearchDropdown({
             </button>
           ))}
           {canCreate && (
-            <button type="button" onMouseDown={handleCreate} disabled={creating}
+            <button type="button" onMouseDown={() => { onQuickCreate(query.trim()); setOpen(false); }} disabled={creating}
               className="w-full text-left px-4 py-2.5 text-sm text-teal font-medium flex items-center gap-2 border-t border-gray-100 hover:bg-teal/5 transition-colors disabled:opacity-50">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -200,7 +205,9 @@ function TourSearchDropdown({
   );
 }
 
-// ── Formulario principal ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Formulario principal
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function ManualBookingForm({
   tours: initialTours,
@@ -213,16 +220,19 @@ export default function ManualBookingForm({
 }) {
   const router = useRouter();
 
-  // ── Sección 1: Tour ───────────────────────────────────────────────────────
+  // ── Paso actual ───────────────────────────────────────────────────────────
+  const [step, setStep] = useState(1);
+
+  // ── Paso 1: Tour ──────────────────────────────────────────────────────────
   const [isAgency,        setIsAgency]        = useState(false);
   const [agencyName,      setAgencyName]      = useState('');
   const [agencyId,        setAgencyId]        = useState<string | null>(null);
   const [agencyList,      setAgencyList]      = useState<Agency[]>(initialAgencies);
   const [showAgencyModal, setShowAgencyModal] = useState(false);
 
-  const [selectedTour,  setSelectedTour]  = useState<AdminTourOption | null>(null);
-  const [tourList,      setTourList]      = useState<AdminTourOption[]>(initialTours);
-  const [creatingTour,  setCreatingTour]  = useState(false);
+  const [selectedTour, setSelectedTour] = useState<AdminTourOption | null>(null);
+  const [tourList,     setTourList]     = useState<AdminTourOption[]>(initialTours);
+  const [creatingTour, setCreatingTour] = useState(false);
 
   const [bookingType,    setBookingType]    = useState<'private'|'group'>('private');
   const [tourDate,       setTourDate]       = useState('');
@@ -230,27 +240,26 @@ export default function ManualBookingForm({
   const [pax,            setPax]            = useState(1);
   const [groupsCount,    setGroupsCount]    = useState(1);
 
-  // Picnic + duración (después del pax)
   const [hasPicnic,       setHasPicnic]       = useState(false);
   const [showPicnicNotes, setShowPicnicNotes] = useState(false);
   const [picnicNotes,     setPicnicNotes]     = useState('');
   const [durationHours,   setDurationHours]   = useState('');
 
-  // ── Sección 2: Pasajeros ──────────────────────────────────────────────────
+  // ── Paso 2: Pasajeros ─────────────────────────────────────────────────────
   const [passengers,    setPassengers]    = useState<PassengerData[]>([emptyPassenger()]);
   const [tourLanguages, setTourLanguages] = useState<('es'|'en'|'pt')[]>(['es']);
 
-  // ── Sección 3: Operaciones (opcional) ────────────────────────────────────
-  const [outsourced,  setOutsourced]  = useState(false);
-  const [guideNotes,  setGuideNotes]  = useState('');
+  // ── Paso 3: Operaciones ───────────────────────────────────────────────────
+  const [outsourced, setOutsourced] = useState(false);
+  const [guideNotes, setGuideNotes] = useState('');
 
-  // ── Sección 4: Cobranza ───────────────────────────────────────────────────
+  // ── Paso 4: Cobranza ──────────────────────────────────────────────────────
   const [totalAmount,   setTotalAmount]   = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
-  const [paymentMethod,  setPaymentMethod]  = useState('');
-  const [amountPaid,     setAmountPaid]     = useState('');
-  const [receiptRef,     setReceiptRef]     = useState('');
-  const [billingNotes,   setBillingNotes]   = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [amountPaid,    setAmountPaid]    = useState('');
+  const [receiptRef,    setReceiptRef]    = useState('');
+  const [billingNotes,  setBillingNotes]  = useState('');
 
   // ── UI ────────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(false);
@@ -259,27 +268,55 @@ export default function ManualBookingForm({
 
   // ── Derivados ─────────────────────────────────────────────────────────────
   const tourSlug       = selectedTour?.slug ?? '';
+  const paxExceedsSpots = tourDate !== '' && pax > availableSpots;
   const pricePerPerson = totalAmount && pax > 0 ? Math.round(Number(totalAmount) / pax) : null;
 
-  const matchedAgency    = isAgency && agencyName.trim().length >= 2
+  const matchedAgency     = isAgency && agencyName.trim().length >= 2
     ? agencyList.find(a => a.fantasy_name.toLowerCase() === agencyName.trim().toLowerCase())
     : undefined;
   const canRegisterAgency = isAgency && agencyName.trim().length >= 2 && !matchedAgency;
 
-  // ── Handlers: origen ─────────────────────────────────────────────────────
+  // ── Validación por paso ───────────────────────────────────────────────────
+
+  function stepValid(n: number): boolean {
+    if (n === 1) {
+      if (!selectedTour || !tourDate || paxExceedsSpots) return false;
+      if (isAgency && agencyName.trim().length < 2) return false;
+      return true;
+    }
+    if (n === 2) {
+      if (isAgency) {
+        for (const p of passengers) {
+          if (p.name.trim().length < 2 || p.phone.trim().length < 6 || p.pickup_address.trim().length < 3) return false;
+        }
+      } else {
+        const lead = passengers[0];
+        if (!lead || lead.name.trim().length < 2 || lead.id_number.trim().length < 3) return false;
+        if (!lead.email.includes('@') || lead.phone.trim().length < 6 || lead.country.trim().length < 2) return false;
+        for (let i = 1; i < passengers.length; i++) {
+          const p = passengers[i];
+          const hasAny = p.name.trim() || p.id_number.trim();
+          if (hasAny && (p.name.trim().length < 2 || p.id_number.trim().length < 3)) return false;
+        }
+      }
+      return true;
+    }
+    return true; // pasos 3 y 4 son opcionales
+  }
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   function handleOriginChange(agency: boolean) {
     setIsAgency(agency);
     if (!agency) { setAgencyName(''); setAgencyId(null); }
     setGroupsCount(1);
-    if (agency) {
-      setPassengers(prev => [prev[0] ?? emptyPassenger()]);
-    } else {
-      setPassengers(prev => {
-        const lead = prev[0] ?? emptyPassenger();
-        return pax <= 1 ? [lead] : [lead, ...Array.from({ length: pax-1 }, emptyPassenger)];
-      });
-    }
+    setPassengers(agency
+      ? prev => [prev[0] ?? emptyPassenger()]
+      : prev => {
+          const lead = prev[0] ?? emptyPassenger();
+          return pax <= 1 ? [lead] : [lead, ...Array.from({ length: pax-1 }, emptyPassenger)];
+        }
+    );
   }
 
   function handleAgencyNameChange(value: string) {
@@ -294,8 +331,6 @@ export default function ManualBookingForm({
     setAgencyId(agency.id);
     setShowAgencyModal(false);
   }
-
-  // ── Handlers: tour ────────────────────────────────────────────────────────
 
   function handleTourSelect(t: AdminTourOption | null) {
     setSelectedTour(t);
@@ -324,8 +359,6 @@ export default function ManualBookingForm({
       setCreatingTour(false);
     }
   }
-
-  // ── Handlers: fecha / pax ─────────────────────────────────────────────────
 
   function handleDateSelect(date: string, status: 'available'|'forming'|'full'|'blocked'|'past', spots: number) {
     setTourDate(date);
@@ -357,38 +390,12 @@ export default function ManualBookingForm({
     });
   }
 
-  // ── Handlers: pasajeros ───────────────────────────────────────────────────
-
   function toggleTourLanguage(code: 'es'|'en'|'pt') {
     setTourLanguages(prev => prev.includes(code) ? prev.filter(c => c !== code) : [...prev, code]);
   }
 
   function updatePassenger(i: number, field: keyof PassengerData, value: string) {
     setPassengers(prev => prev.map((p, idx) => idx === i ? { ...p, [field]: value } : p));
-  }
-
-  const paxExceedsSpots = tourDate !== '' && pax > availableSpots;
-
-  // ── Validación ────────────────────────────────────────────────────────────
-
-  function formValid(): boolean {
-    if (!selectedTour || !tourDate || paxExceedsSpots) return false;
-    if (isAgency && agencyName.trim().length < 2) return false;
-    if (isAgency) {
-      for (const p of passengers) {
-        if (p.name.trim().length < 2 || p.phone.trim().length < 6 || p.pickup_address.trim().length < 3) return false;
-      }
-    } else {
-      const lead = passengers[0];
-      if (!lead || lead.name.trim().length < 2 || lead.id_number.trim().length < 3) return false;
-      if (!lead.email.includes('@') || lead.phone.trim().length < 6 || lead.country.trim().length < 2) return false;
-      for (let i = 1; i < passengers.length; i++) {
-        const p = passengers[i];
-        const hasAny = p.name.trim() || p.id_number.trim();
-        if (hasAny && (p.name.trim().length < 2 || p.id_number.trim().length < 3)) return false;
-      }
-    }
-    return true;
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -435,11 +442,11 @@ export default function ManualBookingForm({
           outsourced:     outsourced  || undefined,
           total_amount:     totalAmount ? Number(totalAmount) : undefined,
           price_per_person: pricePerPerson ?? undefined,
-          payment_status:   paymentStatus   || undefined,
-          payment_method:   paymentMethod   || undefined,
-          amount_paid:      amountPaid      ? Number(amountPaid)      : undefined,
-          receipt_ref:      receiptRef      || undefined,
-          billing_notes:    billingNotes    || undefined,
+          payment_status:   paymentStatus  || undefined,
+          payment_method:   paymentMethod  || undefined,
+          amount_paid:      amountPaid ? Number(amountPaid) : undefined,
+          receipt_ref:      receiptRef  || undefined,
+          billing_notes:    billingNotes || undefined,
         }),
       });
 
@@ -489,234 +496,287 @@ export default function ManualBookingForm({
 
   return (
     <>
-      <div className="flex flex-col gap-5 max-w-3xl">
+      <div className="flex flex-col max-w-3xl">
 
-        {/* ════════════════════════════════════════════════════════════════════
-            SECCIÓN 1 — Información del tour
-        ════════════════════════════════════════════════════════════════════ */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-5">
-          <SectionHeader n={1} title="Información del tour" />
+        {/* Indicador de paso */}
+        <StepIndicator current={step} />
 
-          {/* Origen */}
-          <div className="flex flex-col gap-3">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Origen</p>
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                { value:false, label:'Tour propio CaraCara', desc:'Cliente directo — web, WhatsApp, teléfono' },
-                { value:true,  label:'De otra agencia',      desc:'Grupo enviado por agencia o tour operador' },
-              ] as const).map(opt => (
-                <button key={String(opt.value)} type="button" onClick={() => handleOriginChange(opt.value)}
-                  className={`flex flex-col gap-0.5 text-left border-2 rounded-xl px-4 py-3 transition-all ${
-                    isAgency === opt.value ? 'border-teal bg-teal/5 shadow-sm' : 'border-gray-200 hover:border-gray-300'
-                  }`}>
-                  <span className={`text-xs font-semibold ${isAgency===opt.value ? 'text-teal' : 'text-gray-600'}`}>{opt.label}</span>
-                  <span className="text-[11px] text-gray-400">{opt.desc}</span>
-                </button>
-              ))}
-            </div>
+        {/* ══════════════════════════════════════════════════════════════════
+            PASO 1 — Información del tour
+        ══════════════════════════════════════════════════════════════════ */}
+        {step === 1 && (
+          <div className="flex flex-col gap-5">
 
-            {isAgency && (
-              <div className="flex flex-col gap-2">
-                <Field label="Nombre de la agencia" required>
-                  <input list="agency-suggestions" value={agencyName} onChange={e => handleAgencyNameChange(e.target.value)}
-                    placeholder="Escribe o selecciona una agencia…" className={`${inputClass} max-w-sm`} />
-                  <datalist id="agency-suggestions">
-                    {agencyList.map(a => <option key={a.id} value={a.fantasy_name} />)}
-                  </datalist>
-                </Field>
-                {matchedAgency && (
-                  <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 max-w-sm">
-                    <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span>Registrada · <span className="font-medium">{matchedAgency.razon_social}</span></span>
-                  </div>
-                )}
-                {canRegisterAgency && (
-                  <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-sm">
-                    <p className="text-xs text-amber-700 flex-1">
-                      <span className="font-semibold">&ldquo;{agencyName}&rdquo;</span> no está registrada.
-                    </p>
-                    <button type="button" onClick={() => setShowAgencyModal(true)}
-                      className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">
-                      Registrar agencia
-                    </button>
-                  </div>
-                )}
+            {/* Origen */}
+            <div className="flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Origen</p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value:false, label:'Tour propio CaraCara', desc:'Cliente directo — web, WhatsApp, teléfono' },
+                  { value:true,  label:'De otra agencia',      desc:'Grupo enviado por agencia o tour operador' },
+                ] as const).map(opt => (
+                  <button key={String(opt.value)} type="button" onClick={() => handleOriginChange(opt.value)}
+                    className={`flex flex-col gap-0.5 text-left border-2 rounded-xl px-4 py-3 transition-all ${
+                      isAgency === opt.value ? 'border-teal bg-teal/5 shadow-sm' : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                    <span className={`text-xs font-semibold ${isAgency===opt.value ? 'text-teal' : 'text-gray-600'}`}>{opt.label}</span>
+                    <span className="text-[11px] text-gray-400">{opt.desc}</span>
+                  </button>
+                ))}
               </div>
-            )}
-          </div>
 
-          <hr className="border-gray-100" />
-
-          {/* Tour + Modalidad */}
-          <div className="flex flex-col gap-3">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Tour</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Tour" required>
-                <TourSearchDropdown
-                  tours={tourList}
-                  selected={selectedTour}
-                  onSelect={t => handleTourSelect(t ?? null)}
-                  onQuickCreate={handleQuickCreateTour}
-                  creating={creatingTour}
-                />
-              </Field>
-              <Field label="Modalidad" required>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['private','group'] as const).map(type => (
-                    <button key={type} type="button" onClick={() => setBookingType(type)}
-                      className={`border-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-                        bookingType===type ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}>
-                      {type==='private' ? 'Privado' : 'Grupal'}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            </div>
-          </div>
-
-          <hr className="border-gray-100" />
-
-          {/* Fecha */}
-          <div className="flex flex-col gap-3">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Fecha</p>
-            <div className="border border-gray-200 rounded-xl p-3 max-w-sm">
-              <BookingCalendar tourSlug={tourSlug} bookingType={bookingType} selected={tourDate} onSelect={handleDateSelect} locale="es" />
-            </div>
-          </div>
-
-          <hr className="border-gray-100" />
-
-          {/* Pax + Grupos */}
-          <div className="flex flex-col gap-3">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Capacidad</p>
-            <div className="flex items-start gap-10 flex-wrap">
-              <Field label="N° de pasajeros" required>
-                <Counter value={pax} onChange={handlePaxChange} min={1} max={availableSpots>0 ? Math.min(availableSpots,18) : 18} />
-              </Field>
-              {isAgency && bookingType==='group' && (
-                <Field label="Grupos" hint="Sub-grupos de esta agencia">
-                  <Counter value={groupsCount} onChange={handleGroupsCountChange} min={1} max={pax} />
-                </Field>
-              )}
-            </div>
-            {paxExceedsSpots && (
-              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                Solo quedan {availableSpots} cupo(s) para este día.
-              </p>
-            )}
-          </div>
-
-          {/* Picnic + Duración — DESPUÉS del pax */}
-          {selectedTour && (
-            <>
-              <hr className="border-gray-100" />
-              <div className="flex flex-col gap-3">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Detalles del tour</p>
-                <div className="flex flex-col gap-3">
-                  {/* Picnic */}
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">¿Incluye picnic?</span>
-                      <Toggle value={hasPicnic} onChange={setHasPicnic} />
-                      <span className={`text-xs font-medium ${hasPicnic ? 'text-teal' : 'text-gray-400'}`}>
-                        {hasPicnic ? 'Sí' : 'No'}
-                      </span>
-                      <button type="button" onClick={() => setShowPicnicNotes(p => !p)}
-                        className="ml-auto text-[11px] text-teal hover:underline font-medium">
-                        {showPicnicNotes ? '− Ocultar detalles' : '+ Agregar detalles'}
+              {isAgency && (
+                <div className="flex flex-col gap-2">
+                  <Field label="Nombre de la agencia" required>
+                    <input list="agency-suggestions" value={agencyName} onChange={e => handleAgencyNameChange(e.target.value)}
+                      placeholder="Escribe o selecciona una agencia…" className={`${inputClass} max-w-sm`} />
+                    <datalist id="agency-suggestions">
+                      {agencyList.map(a => <option key={a.id} value={a.fantasy_name} />)}
+                    </datalist>
+                  </Field>
+                  {matchedAgency && (
+                    <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 max-w-sm">
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Registrada · <span className="font-medium">{matchedAgency.razon_social}</span></span>
+                    </div>
+                  )}
+                  {canRegisterAgency && (
+                    <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-sm">
+                      <p className="text-xs text-amber-700 flex-1">
+                        <span className="font-semibold">&ldquo;{agencyName}&rdquo;</span> no está registrada.
+                      </p>
+                      <button type="button" onClick={() => setShowAgencyModal(true)}
+                        className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">
+                        Registrar agencia
                       </button>
                     </div>
-                    {showPicnicNotes && (
-                      <textarea value={picnicNotes} onChange={e => setPicnicNotes(e.target.value)} rows={2}
-                        placeholder="Menú, restricciones dietéticas, notas al guía…"
-                        className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-                    )}
-                  </div>
-                  {/* Duración */}
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">Duración</span>
-                    <input type="number" min={0.5} max={24} step={0.5} value={durationHours}
-                      onChange={e => setDurationHours(e.target.value)} placeholder="horas"
-                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-24" />
-                    {selectedTour.duration_hours != null && !durationHours && (
-                      <span className="text-xs text-gray-400">
-                        Último: {selectedTour.duration_hours}h
-                        <button type="button" className="ml-1 text-teal hover:underline"
-                          onClick={() => setDurationHours(String(selectedTour.duration_hours))}>usar</button>
-                      </span>
-                    )}
-                    {durationHours && <span className="text-xs text-gray-400">Se actualizará el tour.</span>}
-                  </div>
+                  )}
                 </div>
-              </div>
-            </>
-          )}
-        </div>
+              )}
+            </div>
 
-        {/* ════════════════════════════════════════════════════════════════════
-            SECCIÓN 2 — Pasajeros
-        ════════════════════════════════════════════════════════════════════ */}
-        {isAgency ? (
-          <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4">
-            <SectionHeader
-              n={2}
-              title={passengers.length === 1 ? 'Titular del grupo' : `Titulares de los ${passengers.length} grupos`}
-              subtitle="Nombre, teléfono y pickup obligatorios."
-            />
+            <hr className="border-gray-100" />
 
-            {passengers.map((p, i) => (
-              <div key={i} className="border border-gray-100 rounded-xl p-4 flex flex-col gap-3 bg-gray-50/50">
-                {passengers.length > 1 && (
-                  <p className="text-xs font-semibold text-teal">
-                    Grupo {i+1}{i===0 && <span className="ml-1 font-normal text-gray-400">· contacto principal</span>}
-                  </p>
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label="Nombre completo" required>
-                    <input value={p.name} onChange={e => updatePassenger(i,'name',e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Teléfono" required>
-                    <input type="tel" value={p.phone} onChange={e => updatePassenger(i,'phone',e.target.value)} className={inputClass} />
-                  </Field>
-                </div>
-                <Field label="Dirección de pickup" required hint="Punto de recogida del grupo">
-                  <input value={p.pickup_address} onChange={e => updatePassenger(i,'pickup_address',e.target.value)}
-                    placeholder="Hotel Austral, Av. O'Higgins 1234" className={inputClass} />
+            {/* Tour + Modalidad */}
+            <div className="flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Tour</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Tour" required>
+                  <TourSearchDropdown
+                    tours={tourList} selected={selectedTour}
+                    onSelect={handleTourSelect} onQuickCreate={handleQuickCreateTour} creating={creatingTour}
+                  />
                 </Field>
-                <details className="group">
-                  <summary className="text-[11px] font-medium text-gray-400 cursor-pointer hover:text-gray-600 select-none list-none flex items-center gap-1">
-                    <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    Datos adicionales opcionales
-                  </summary>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                    <Field label="Hospedaje">
-                      <input value={p.hotel_name} onChange={e => updatePassenger(i,'hotel_name',e.target.value)}
-                        placeholder="Hotel Austral" className={inputClass} />
-                    </Field>
-                    <Field label="Email">
-                      <input type="email" value={p.email} onChange={e => updatePassenger(i,'email',e.target.value)} className={inputClass} />
-                    </Field>
-                    <Field label="Tipo de documento">
-                      <select value={p.id_type} onChange={e => updatePassenger(i,'id_type',e.target.value as 'rut'|'passport')} className={selectClass}>
-                        <option value="passport">Pasaporte</option>
-                        <option value="rut">RUT</option>
-                      </select>
-                    </Field>
-                    <Field label="N° de documento">
-                      <input value={p.id_number} onChange={e => updatePassenger(i,'id_number',e.target.value)} className={inputClass} />
-                    </Field>
-                    <Field label="País de origen">
-                      <input value={p.country} onChange={e => updatePassenger(i,'country',e.target.value)} className={inputClass} />
-                    </Field>
+                <Field label="Modalidad" required>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['private','group'] as const).map(type => (
+                      <button key={type} type="button" onClick={() => setBookingType(type)}
+                        className={`border-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                          bookingType===type ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                        }`}>
+                        {type==='private' ? 'Privado' : 'Grupal'}
+                      </button>
+                    ))}
                   </div>
-                </details>
+                </Field>
               </div>
-            ))}
+            </div>
+
+            <hr className="border-gray-100" />
+
+            {/* Fecha */}
+            <div className="flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Fecha</p>
+              <div className="border border-gray-200 rounded-xl p-3 max-w-sm">
+                <BookingCalendar tourSlug={tourSlug} bookingType={bookingType} selected={tourDate} onSelect={handleDateSelect} locale="es" />
+              </div>
+            </div>
+
+            <hr className="border-gray-100" />
+
+            {/* Pax + Grupos */}
+            <div className="flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Capacidad</p>
+              <div className="flex items-start gap-10 flex-wrap">
+                <Field label="N° de pasajeros" required>
+                  <Counter value={pax} onChange={handlePaxChange} min={1} max={availableSpots>0 ? Math.min(availableSpots,18) : 18} />
+                </Field>
+                {isAgency && bookingType==='group' && (
+                  <Field label="Grupos" hint="Sub-grupos de esta agencia">
+                    <Counter value={groupsCount} onChange={handleGroupsCountChange} min={1} max={pax} />
+                  </Field>
+                )}
+              </div>
+              {paxExceedsSpots && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  Solo quedan {availableSpots} cupo(s) para este día.
+                </p>
+              )}
+            </div>
+
+            {/* Picnic + Duración */}
+            {selectedTour && (
+              <>
+                <hr className="border-gray-100" />
+                <div className="flex flex-col gap-3">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Detalles del tour</p>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">¿Incluye picnic?</span>
+                        <Toggle value={hasPicnic} onChange={setHasPicnic} />
+                        <span className={`text-xs font-medium ${hasPicnic ? 'text-teal' : 'text-gray-400'}`}>
+                          {hasPicnic ? 'Sí' : 'No'}
+                        </span>
+                        <button type="button" onClick={() => setShowPicnicNotes(p => !p)}
+                          className="ml-auto text-[11px] text-teal hover:underline font-medium">
+                          {showPicnicNotes ? '− Ocultar detalles' : '+ Agregar detalles'}
+                        </button>
+                      </div>
+                      {showPicnicNotes && (
+                        <textarea value={picnicNotes} onChange={e => setPicnicNotes(e.target.value)} rows={2}
+                          placeholder="Menú, restricciones dietéticas, notas al guía…"
+                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">Duración</span>
+                      <input type="number" min={0.5} max={24} step={0.5} value={durationHours}
+                        onChange={e => setDurationHours(e.target.value)} placeholder="horas"
+                        className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-24" />
+                      {selectedTour.duration_hours != null && !durationHours && (
+                        <span className="text-xs text-gray-400">
+                          Último: {selectedTour.duration_hours}h
+                          <button type="button" className="ml-1 text-teal hover:underline"
+                            onClick={() => setDurationHours(String(selectedTour!.duration_hours))}>usar</button>
+                        </span>
+                      )}
+                      {durationHours && <span className="text-xs text-gray-400">Se actualizará el tour.</span>}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            PASO 2 — Pasajeros
+        ══════════════════════════════════════════════════════════════════ */}
+        {step === 2 && (
+          <div className="flex flex-col gap-4">
+            {isAgency ? (
+              <>
+                <p className="text-sm text-gray-500">
+                  {passengers.length === 1 ? 'Titular del grupo' : `Titulares de los ${passengers.length} grupos`}
+                  <span className="ml-1 text-xs text-gray-400">· nombre, teléfono y pickup obligatorios</span>
+                </p>
+
+                {passengers.map((p, i) => (
+                  <div key={i} className="border border-gray-100 rounded-xl p-4 flex flex-col gap-3 bg-gray-50/50">
+                    {passengers.length > 1 && (
+                      <p className="text-xs font-semibold text-teal">
+                        Grupo {i+1}{i===0 && <span className="ml-1 font-normal text-gray-400">· contacto principal</span>}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field label="Nombre completo" required>
+                        <input value={p.name} onChange={e => updatePassenger(i,'name',e.target.value)} className={inputClass} />
+                      </Field>
+                      <Field label="Teléfono" required>
+                        <input type="tel" value={p.phone} onChange={e => updatePassenger(i,'phone',e.target.value)} className={inputClass} />
+                      </Field>
+                    </div>
+                    <Field label="Dirección de pickup" required hint="Punto de recogida del grupo">
+                      <input value={p.pickup_address} onChange={e => updatePassenger(i,'pickup_address',e.target.value)}
+                        placeholder="Hotel Austral, Av. O'Higgins 1234" className={inputClass} />
+                    </Field>
+                    <details className="group">
+                      <summary className="text-[11px] font-medium text-gray-400 cursor-pointer hover:text-gray-600 select-none list-none flex items-center gap-1">
+                        <svg className="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                        Datos adicionales opcionales
+                      </summary>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                        <Field label="Hospedaje">
+                          <input value={p.hotel_name} onChange={e => updatePassenger(i,'hotel_name',e.target.value)}
+                            placeholder="Hotel Austral" className={inputClass} />
+                        </Field>
+                        <Field label="Email">
+                          <input type="email" value={p.email} onChange={e => updatePassenger(i,'email',e.target.value)} className={inputClass} />
+                        </Field>
+                        <Field label="Tipo de documento">
+                          <select value={p.id_type} onChange={e => updatePassenger(i,'id_type',e.target.value as 'rut'|'passport')} className={selectClass}>
+                            <option value="passport">Pasaporte</option>
+                            <option value="rut">RUT</option>
+                          </select>
+                        </Field>
+                        <Field label="N° de documento">
+                          <input value={p.id_number} onChange={e => updatePassenger(i,'id_number',e.target.value)} className={inputClass} />
+                        </Field>
+                        <Field label="País de origen">
+                          <input value={p.country} onChange={e => updatePassenger(i,'country',e.target.value)} className={inputClass} />
+                        </Field>
+                      </div>
+                    </details>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                {passengers.map((p, i) => (
+                  <div key={i} className="border border-gray-100 rounded-xl p-4 flex flex-col gap-3 bg-gray-50/50">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-semibold text-teal">
+                        {i===0 ? 'Titular (contacto principal)' : `Pasajero ${i+1}`}
+                      </p>
+                      {i > 0 && <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">opcional</span>}
+                    </div>
+                    {i > 0 && <p className="text-xs text-gray-400 -mt-2">Déjalo en blanco si no tienes el dato aún.</p>}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field label="Nombre completo" required={i===0}>
+                        <input value={p.name} onChange={e => updatePassenger(i,'name',e.target.value)} className={inputClass} />
+                      </Field>
+                      <Field label="Tipo de documento" required={i===0}>
+                        <select value={p.id_type} onChange={e => updatePassenger(i,'id_type',e.target.value as 'rut'|'passport')} className={selectClass}>
+                          <option value="passport">Pasaporte</option><option value="rut">RUT</option>
+                        </select>
+                      </Field>
+                      <Field label="N° de documento" required={i===0}>
+                        <input value={p.id_number} onChange={e => updatePassenger(i,'id_number',e.target.value)} className={inputClass} />
+                      </Field>
+                      {i===0 && (
+                        <>
+                          <Field label="País de origen" required>
+                            <input value={p.country} onChange={e => updatePassenger(i,'country',e.target.value)} className={inputClass} />
+                          </Field>
+                          <Field label="Fecha de nacimiento">
+                            <input type="date" value={p.birth_date} onChange={e => updatePassenger(i,'birth_date',e.target.value)}
+                              max={new Date().toISOString().slice(0,10)} className={inputClass} />
+                          </Field>
+                          <Field label="Email" required>
+                            <input type="email" value={p.email} onChange={e => updatePassenger(i,'email',e.target.value)} className={inputClass} />
+                          </Field>
+                          <Field label="Teléfono" required>
+                            <input type="tel" value={p.phone} onChange={e => updatePassenger(i,'phone',e.target.value)} className={inputClass} />
+                          </Field>
+                          <Field label="Dirección de pickup">
+                            <input value={p.pickup_address} onChange={e => updatePassenger(i,'pickup_address',e.target.value)}
+                              placeholder="Hotel Austral, Av. O'Higgins 1234" className={inputClass} />
+                          </Field>
+                          <Field label="Hospedaje">
+                            <input value={p.hotel_name} onChange={e => updatePassenger(i,'hotel_name',e.target.value)} className={inputClass} />
+                          </Field>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
 
             <Field label="Idioma(s) del tour">
               <div className="flex gap-2 flex-wrap">
@@ -729,176 +789,132 @@ export default function ManualBookingForm({
               </div>
             </Field>
           </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4">
-            <SectionHeader n={2} title="Pasajeros" />
-            {passengers.map((p, i) => (
-              <div key={i} className="border border-gray-100 rounded-xl p-4 flex flex-col gap-3 bg-gray-50/50">
-                <div className="flex items-center gap-2">
-                  <p className="text-xs font-semibold text-teal">
-                    {i===0 ? 'Titular (contacto principal)' : `Pasajero ${i+1}`}
-                  </p>
-                  {i > 0 && <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">opcional</span>}
-                </div>
-                {i > 0 && <p className="text-xs text-gray-400 -mt-2">Déjalo en blanco si no tienes el dato aún.</p>}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label="Nombre completo" required={i===0}>
-                    <input value={p.name} onChange={e => updatePassenger(i,'name',e.target.value)} className={inputClass} />
-                  </Field>
-                  <Field label="Tipo de documento" required={i===0}>
-                    <select value={p.id_type} onChange={e => updatePassenger(i,'id_type',e.target.value as 'rut'|'passport')} className={selectClass}>
-                      <option value="passport">Pasaporte</option><option value="rut">RUT</option>
-                    </select>
-                  </Field>
-                  <Field label="N° de documento" required={i===0}>
-                    <input value={p.id_number} onChange={e => updatePassenger(i,'id_number',e.target.value)} className={inputClass} />
-                  </Field>
-                  {i===0 && (
-                    <>
-                      <Field label="País de origen" required>
-                        <input value={p.country} onChange={e => updatePassenger(i,'country',e.target.value)} className={inputClass} />
-                      </Field>
-                      <Field label="Fecha de nacimiento" required>
-                        <input type="date" value={p.birth_date} onChange={e => updatePassenger(i,'birth_date',e.target.value)}
-                          max={new Date().toISOString().slice(0,10)} className={inputClass} />
-                      </Field>
-                      <Field label="Email" required>
-                        <input type="email" value={p.email} onChange={e => updatePassenger(i,'email',e.target.value)} className={inputClass} />
-                      </Field>
-                      <Field label="Teléfono" required>
-                        <input type="tel" value={p.phone} onChange={e => updatePassenger(i,'phone',e.target.value)} className={inputClass} />
-                      </Field>
-                      <Field label="Dirección de pickup">
-                        <input value={p.pickup_address} onChange={e => updatePassenger(i,'pickup_address',e.target.value)}
-                          placeholder="Hotel Austral, Av. O'Higgins 1234" className={inputClass} />
-                      </Field>
-                      <Field label="Hospedaje">
-                        <input value={p.hotel_name} onChange={e => updatePassenger(i,'hotel_name',e.target.value)} className={inputClass} />
-                      </Field>
-                    </>
-                  )}
-                </div>
-                {i===0 && (
-                  <Field label="Idioma(s) del tour">
-                    <div className="flex gap-2 flex-wrap">
-                      {TOUR_LANGUAGES.map(lang => (
-                        <button key={lang.code} type="button" onClick={() => toggleTourLanguage(lang.code)}
-                          className={`border-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                            tourLanguages.includes(lang.code) ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                          }`}>{lang.label}</button>
-                      ))}
-                    </div>
-                  </Field>
-                )}
-              </div>
-            ))}
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            PASO 3 — Operaciones
+        ══════════════════════════════════════════════════════════════════ */}
+        {step === 3 && (
+          <div className="flex flex-col gap-4">
+            <p className="text-sm text-gray-400">Esta información es opcional y se puede completar después.</p>
+
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-medium text-gray-600 w-32 flex-shrink-0">¿Tour externalizado?</span>
+              <Toggle value={outsourced} onChange={setOutsourced} />
+              <span className={`text-xs font-medium ${outsourced ? 'text-orange' : 'text-gray-400'}`}>
+                {outsourced ? 'Sí — operado por otro proveedor' : 'No'}
+              </span>
+            </div>
+
+            <Field label="Notas al guía / conductor">
+              <textarea rows={4} value={guideNotes} onChange={e => setGuideNotes(e.target.value)}
+                placeholder="Instrucciones de ruta, necesidades especiales, puntos de pickup en orden…"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+            </Field>
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════════════════════
-            SECCIÓN 3 — Operaciones (opcional)
-        ════════════════════════════════════════════════════════════════════ */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4">
-          <SectionHeader n={3} title="Operaciones" subtitle="Guía, van y externalización — se puede completar después." />
+        {/* ══════════════════════════════════════════════════════════════════
+            PASO 4 — Cobranza
+        ══════════════════════════════════════════════════════════════════ */}
+        {step === 4 && (
+          <div className="flex flex-col gap-4">
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-medium text-gray-600 w-32 flex-shrink-0">¿Tour externalizado?</span>
-            <Toggle value={outsourced} onChange={setOutsourced} />
-            <span className={`text-xs font-medium ${outsourced ? 'text-orange' : 'text-gray-400'}`}>
-              {outsourced ? 'Sí — operado por otro proveedor' : 'No'}
-            </span>
-          </div>
-
-          <Field label="Notas al guía / conductor">
-            <textarea rows={2} value={guideNotes} onChange={e => setGuideNotes(e.target.value)}
-              placeholder="Instrucciones de ruta, necesidades especiales, puntos de pickup en orden…"
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-          </Field>
-        </div>
-
-        {/* ════════════════════════════════════════════════════════════════════
-            SECCIÓN 4 — Cobranza
-        ════════════════════════════════════════════════════════════════════ */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-4">
-          <SectionHeader n={4} title="Cobranza" />
-
-          <div className="flex flex-col sm:flex-row gap-4 items-start">
-            <Field label="Total cobrado (CLP)">
-              <input type="number" min={0} value={totalAmount} onChange={e => setTotalAmount(e.target.value)}
-                placeholder="Ej: 180000" className={inputClass} />
-            </Field>
-            {pricePerPerson !== null && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-gray-600">Por persona</span>
-                <div className="flex items-center h-[38px] px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold text-teal">
-                  ${pricePerPerson.toLocaleString('es-CL')}
+            <div className="flex flex-col sm:flex-row gap-4 items-start">
+              <Field label="Total cobrado (CLP)">
+                <input type="number" min={0} value={totalAmount} onChange={e => setTotalAmount(e.target.value)}
+                  placeholder="Ej: 180000" className={inputClass} />
+              </Field>
+              {pricePerPerson !== null && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-xs font-medium text-gray-600">Por persona</span>
+                  <div className="flex items-center h-[38px] px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold text-teal">
+                    ${pricePerPerson.toLocaleString('es-CL')}
+                  </div>
+                  <p className="text-[11px] text-gray-400">{pax} pax</p>
                 </div>
-                <p className="text-[11px] text-gray-400">{pax} pax</p>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Estado del pago */}
             <Field label="Estado del pago">
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="flex gap-2">
                 {PAYMENT_STATUS.map(s => (
                   <button key={s.v} type="button" onClick={() => setPaymentStatus(prev => prev===s.v ? '' : s.v)}
-                    className={`border-2 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors text-center ${
+                    className={`border-2 rounded-lg px-4 py-2 text-xs font-medium transition-colors ${
                       paymentStatus===s.v
-                        ? s.v==='paid' ? 'border-green-400 bg-green-50 text-green-700'
+                        ? s.v==='paid'    ? 'border-green-400 bg-green-50 text-green-700'
                         : s.v==='partial' ? 'border-amber-400 bg-amber-50 text-amber-700'
-                        : 'border-gray-400 bg-gray-50 text-gray-700'
+                        :                   'border-gray-400 bg-gray-50 text-gray-700'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}>{s.l}</button>
                 ))}
               </div>
             </Field>
 
-            {/* Monto pagado (solo si parcial) */}
             {paymentStatus === 'partial' && (
               <Field label="Monto pagado (CLP)">
                 <input type="number" min={0} value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
-                  placeholder="Ej: 90000" className={inputClass} />
+                  placeholder="Ej: 90000" className={`${inputClass} max-w-xs`} />
               </Field>
             )}
+
+            <Field label="Forma de pago">
+              <div className="flex flex-wrap gap-1.5">
+                {PAYMENT_METHODS.map(m => (
+                  <button key={m.v} type="button" onClick={() => setPaymentMethod(prev => prev===m.v ? '' : m.v)}
+                    className={`border-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                      paymentMethod===m.v ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}>{m.l}</button>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="N° de comprobante / referencia">
+              <input value={receiptRef} onChange={e => setReceiptRef(e.target.value)}
+                placeholder="Ej: 000345678 (transferencia), recibo N°12, etc."
+                className={`${inputClass} max-w-sm`} />
+            </Field>
+
+            <Field label="Notas de cobranza">
+              <textarea rows={3} value={billingNotes} onChange={e => setBillingNotes(e.target.value)}
+                placeholder="Cuotas, acuerdos especiales, pendiente de factura, etc."
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+            </Field>
           </div>
+        )}
 
-          {/* Forma de pago */}
-          <Field label="Forma de pago">
-            <div className="flex flex-wrap gap-1.5">
-              {PAYMENT_METHODS.map(m => (
-                <button key={m.v} type="button" onClick={() => setPaymentMethod(prev => prev===m.v ? '' : m.v)}
-                  className={`border-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
-                    paymentMethod===m.v ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}>{m.l}</button>
-              ))}
-            </div>
-          </Field>
-
-          <Field label="N° de comprobante / referencia">
-            <input value={receiptRef} onChange={e => setReceiptRef(e.target.value)}
-              placeholder="Ej: 000345678 (transferencia), recibo N°12, etc."
-              className={`${inputClass} max-w-sm`} />
-          </Field>
-
-          <Field label="Notas de cobranza">
-            <textarea rows={2} value={billingNotes} onChange={e => setBillingNotes(e.target.value)}
-              placeholder="Cuotas, acuerdos especiales, pendiente de factura, etc."
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-          </Field>
-        </div>
-
+        {/* ── Navegación ─────────────────────────────────────────────────── */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mt-4">
             <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
 
-        <button type="button" disabled={!formValid() || loading} onClick={handleSubmit}
-          className="self-start bg-teal text-white font-semibold px-6 py-3 rounded-xl hover:bg-teal/90 disabled:opacity-50 transition-colors">
-          {loading ? 'Creando reserva…' : 'Crear reserva'}
-        </button>
+        <div className="flex items-center justify-between pt-5 mt-5 border-t border-gray-100">
+          <button type="button" onClick={() => setStep(s => s - 1)} disabled={step === 1}
+            className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Anterior
+          </button>
+
+          {step < 4 ? (
+            <button type="button" onClick={() => setStep(s => s + 1)} disabled={!stepValid(step)}
+              className="flex items-center gap-1.5 bg-teal text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-teal/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              Siguiente
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          ) : (
+            <button type="button" onClick={handleSubmit}
+              disabled={!stepValid(1) || !stepValid(2) || loading}
+              className="bg-teal text-white font-semibold px-6 py-2.5 rounded-xl hover:bg-teal/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+              {loading ? 'Creando reserva…' : 'Crear reserva'}
+            </button>
+          )}
+        </div>
       </div>
 
       {showAgencyModal && (
