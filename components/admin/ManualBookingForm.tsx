@@ -105,6 +105,14 @@ function PassengerLookup({ onSelect }: { onSelect: (c: ClientMatch) => void }) {
 export interface GuideOption { id: string; name: string; role: string; }
 export interface VanOption   { id: string; name: string; plate: string | null; capacity: number; }
 
+interface TourStop {
+  key:          string;
+  name:         string;
+  arrival_time: string;
+  duration_min: string;
+  notes:        string;
+}
+
 const CC_ROLE_BUTTONS = [
   { key: 'guide',        label: 'Guía'           },
   { key: 'driver',       label: 'Chofer'         },
@@ -428,7 +436,7 @@ const PAYMENT_METHODS = [
   { v:'other',       l:'Otro'          },
 ] as const;
 
-const STEP_LABELS = ['Tour', 'Pasajeros', 'Operaciones', 'Cobranza'];
+const STEP_LABELS = ['Tour', 'Pasajeros', 'Operaciones', 'Detalles', 'Cobranza'];
 
 const inputClass  = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full';
 const selectClass = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full bg-white';
@@ -661,7 +669,20 @@ export default function ManualBookingForm({
   const [showProviderModal, setShowProviderModal]  = useState(false);
   const [activeProviderCtx, setActiveProviderCtx] = useState<'shared'|'guide'|'driver'|'guide_driver'|'van'>('shared');
 
-  // ── Paso 4: Cobranza ──────────────────────────────────────────────────────
+  // ── Paso 4: Detalles del tour ─────────────────────────────────────────────
+  const [departureTime,        setDepartureTime]        = useState('');
+  const [departureAddress,     setDepartureAddress]     = useState('');
+  const [agencyDepartureNotes, setAgencyDepartureNotes] = useState('');
+  const [meetingPoint,         setMeetingPoint]         = useState('');
+  const [tourStops,            setTourStops]            = useState<TourStop[]>([]);
+  const [equipment,            setEquipment]            = useState('');
+  const [dietaryRestrictions,  setDietaryRestrictions]  = useState('');
+  const [physicalLevel,        setPhysicalLevel]        = useState('');
+  const [accessibilityNotes,   setAccessibilityNotes]   = useState('');
+  const [specialRequests,      setSpecialRequests]      = useState('');
+  const [materialsNeeded,      setMaterialsNeeded]      = useState('');
+
+  // ── Paso 5: Cobranza ──────────────────────────────────────────────────────
   const [totalAmount,   setTotalAmount]   = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -886,6 +907,22 @@ export default function ManualBookingForm({
             }
             return ops.length > 0 ? ops : undefined;
           })(),
+          departure_time:          departureTime        || undefined,
+          departure_address:       departureAddress     || undefined,
+          agency_departure_notes:  agencyDepartureNotes || undefined,
+          meeting_point:           meetingPoint         || undefined,
+          tour_stops: tourStops.length > 0 ? tourStops.map(s => ({
+            name:         s.name,
+            arrival_time: s.arrival_time || undefined,
+            duration_min: s.duration_min ? Number(s.duration_min) : undefined,
+            notes:        s.notes        || undefined,
+          })) : undefined,
+          equipment_notes:      equipment            || undefined,
+          dietary_restrictions: dietaryRestrictions  || undefined,
+          physical_level:       physicalLevel        || undefined,
+          accessibility_notes:  accessibilityNotes   || undefined,
+          special_requests:     specialRequests      || undefined,
+          materials_needed:     materialsNeeded      || undefined,
           total_amount:     totalAmount ? Number(totalAmount) : undefined,
           price_per_person: pricePerPerson ?? undefined,
           payment_status:   paymentStatus  || undefined,
@@ -1257,47 +1294,6 @@ export default function ManualBookingForm({
         {step === 3 && (
           <div className="flex flex-col gap-5">
             <p className="text-xs text-gray-400">Información opcional — se puede completar después.</p>
-
-            {/* ── Detalles del tour ────────────────────────────────────────── */}
-            <div className="flex flex-col gap-3">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Detalles del tour</p>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">¿Incluye picnic?</span>
-                    <Toggle value={hasPicnic} onChange={setHasPicnic} />
-                    <span className={`text-xs font-medium ${hasPicnic ? 'text-teal' : 'text-gray-400'}`}>
-                      {hasPicnic ? 'Sí' : 'No'}
-                    </span>
-                    <button type="button" onClick={() => setShowPicnicNotes(p => !p)}
-                      className="ml-auto text-[11px] text-teal hover:underline font-medium">
-                      {showPicnicNotes ? '− Ocultar detalles' : '+ Agregar detalles'}
-                    </button>
-                  </div>
-                  {showPicnicNotes && (
-                    <textarea value={picnicNotes} onChange={e => setPicnicNotes(e.target.value)} rows={2}
-                      placeholder="Menú, restricciones dietéticas, notas al guía…"
-                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-                  )}
-                </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">Duración</span>
-                  <input type="number" min={0.5} max={24} step={0.5} value={durationHours}
-                    onChange={e => setDurationHours(e.target.value)} placeholder="horas"
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-24" />
-                  {selectedTour?.duration_hours != null && !durationHours && (
-                    <span className="text-xs text-gray-400">
-                      Último: {selectedTour.duration_hours}h
-                      <button type="button" className="ml-1 text-teal hover:underline"
-                        onClick={() => setDurationHours(String(selectedTour!.duration_hours))}>usar</button>
-                    </span>
-                  )}
-                  {durationHours && <span className="text-xs text-gray-400">Se actualizará el tour.</span>}
-                </div>
-              </div>
-            </div>
-
-            <hr className="border-gray-100" />
 
             {/* ── CaraCara ─────────────────────────────────────────────── */}
             <div className="flex flex-col gap-3">
@@ -1752,9 +1748,194 @@ export default function ManualBookingForm({
               )}
             </div>
 
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════
+            PASO 4 — Detalles del tour
+        ══════════════════════════════════════════════════════════════════ */}
+        {step === 4 && (
+          <div className="flex flex-col gap-5">
+            <p className="text-xs text-gray-400">Toda la información de este paso es opcional.</p>
+
+            {/* ── Picnic y duración ──────────────────────────────────────── */}
+            <div className="flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Picnic y duración</p>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">¿Incluye picnic?</span>
+                    <Toggle value={hasPicnic} onChange={setHasPicnic} />
+                    <span className={`text-xs font-medium ${hasPicnic ? 'text-teal' : 'text-gray-400'}`}>
+                      {hasPicnic ? 'Sí' : 'No'}
+                    </span>
+                    <button type="button" onClick={() => setShowPicnicNotes(p => !p)}
+                      className="ml-auto text-[11px] text-teal hover:underline font-medium">
+                      {showPicnicNotes ? '− Ocultar detalles' : '+ Agregar detalles'}
+                    </button>
+                  </div>
+                  {showPicnicNotes && (
+                    <textarea value={picnicNotes} onChange={e => setPicnicNotes(e.target.value)} rows={2}
+                      placeholder="Menú, restricciones dietéticas, notas al guía…"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+                  )}
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">Duración</span>
+                  <input type="number" min={0.5} max={24} step={0.5} value={durationHours}
+                    onChange={e => setDurationHours(e.target.value)} placeholder="horas"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-24" />
+                  {selectedTour?.duration_hours != null && !durationHours && (
+                    <span className="text-xs text-gray-400">
+                      Último: {selectedTour.duration_hours}h
+                      <button type="button" className="ml-1 text-teal hover:underline"
+                        onClick={() => setDurationHours(String(selectedTour!.duration_hours))}>usar</button>
+                    </span>
+                  )}
+                  {durationHours && <span className="text-xs text-gray-400">Se actualizará el tour.</span>}
+                </div>
+              </div>
+            </div>
+
             <hr className="border-gray-100" />
 
-            {/* ── Notas generales al equipo ──────────────────────────── */}
+            {/* ── Horario de partida ─────────────────────────────────────── */}
+            <div className="flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Horario de partida</p>
+              {isAgency ? (
+                <Field label="Horarios definidos por la agencia">
+                  <textarea rows={2} value={agencyDepartureNotes}
+                    onChange={e => setAgencyDepartureNotes(e.target.value)}
+                    placeholder="Ej: pickup 08:00 en hotel, salida 08:30 desde terminal…"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+                </Field>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="Hora primer punto">
+                    <input type="time" value={departureTime} onChange={e => setDepartureTime(e.target.value)}
+                      className={inputClass} />
+                  </Field>
+                  <Field label="Dirección primer punto">
+                    <input type="text" value={departureAddress} onChange={e => setDepartureAddress(e.target.value)}
+                      placeholder="Ej: Av. Libertad 1234, Puerto Montt"
+                      className={inputClass} />
+                  </Field>
+                </div>
+              )}
+            </div>
+
+            <hr className="border-gray-100" />
+
+            {/* ── Punto de encuentro ─────────────────────────────────────── */}
+            <Field label="Punto de encuentro (opcional)" hint="Para coordinar a guías y choferes">
+              <input type="text" value={meetingPoint} onChange={e => setMeetingPoint(e.target.value)}
+                placeholder="Ej: Lobby Hotel Austral — 08:30 h"
+                className={inputClass} />
+            </Field>
+
+            <hr className="border-gray-100" />
+
+            {/* ── Puntos a visitar ───────────────────────────────────────── */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Puntos a visitar</p>
+                <div className="h-px flex-1 bg-gray-100" />
+                <button type="button"
+                  onClick={() => setTourStops(s => [...s, { key: String(Date.now()), name: '', arrival_time: '', duration_min: '', notes: '' }])}
+                  className="text-[11px] text-teal hover:underline font-medium whitespace-nowrap">
+                  + Agregar parada
+                </button>
+              </div>
+              {tourStops.length === 0 && (
+                <p className="text-xs text-gray-400 italic">Sin paradas definidas. Puramente informativo para el equipo.</p>
+              )}
+              {tourStops.map((stop, idx) => (
+                <div key={stop.key} className="border border-gray-200 rounded-xl p-3 flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest w-5 text-center">{idx + 1}</span>
+                    <input type="text" value={stop.name} placeholder="Nombre / lugar"
+                      onChange={e => setTourStops(s => s.map((x, i) => i === idx ? { ...x, name: e.target.value } : x))}
+                      className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-teal flex-1" />
+                    <input type="time" value={stop.arrival_time}
+                      onChange={e => setTourStops(s => s.map((x, i) => i === idx ? { ...x, arrival_time: e.target.value } : x))}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-teal w-28" />
+                    <input type="number" min={0} max={480} value={stop.duration_min} placeholder="min"
+                      onChange={e => setTourStops(s => s.map((x, i) => i === idx ? { ...x, duration_min: e.target.value } : x))}
+                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-teal w-20" />
+                    <button type="button"
+                      onClick={() => setTourStops(s => s.filter((_, i) => i !== idx))}
+                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5 flex-shrink-0">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                  <input type="text" value={stop.notes} placeholder="Notas (opcional)"
+                    onChange={e => setTourStops(s => s.map((x, i) => i === idx ? { ...x, notes: e.target.value } : x))}
+                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-teal w-full ml-7" />
+                </div>
+              ))}
+            </div>
+
+            <hr className="border-gray-100" />
+
+            {/* ── Equipamiento sugerido ─────────────────────────────────── */}
+            <Field label="Equipamiento sugerido (opcional)">
+              <textarea rows={2} value={equipment} onChange={e => setEquipment(e.target.value)}
+                placeholder="Ej: Calzado de trekking, ropa de abrigo, botella de agua…"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+            </Field>
+
+            {/* ── Restricciones alimentarias ────────────────────────────── */}
+            <Field label="Restricciones alimentarias (opcional)">
+              <textarea rows={2} value={dietaryRestrictions} onChange={e => setDietaryRestrictions(e.target.value)}
+                placeholder="Ej: 2 vegetarianos, 1 celíaco, alergia a frutos secos…"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+            </Field>
+
+            {/* ── Nivel de condición física ──────────────────────────────── */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium text-gray-600">Nivel de condición física (opcional)</label>
+              <div className="flex gap-2 flex-wrap">
+                {([
+                  { v: 'low',       l: 'Bajo'     },
+                  { v: 'moderate',  l: 'Moderado'  },
+                  { v: 'high',      l: 'Alto'      },
+                  { v: 'very_high', l: 'Muy alto'  },
+                ] as const).map(opt => (
+                  <button key={opt.v} type="button"
+                    onClick={() => setPhysicalLevel(prev => prev === opt.v ? '' : opt.v)}
+                    className={`border-2 rounded-lg px-4 py-2 text-xs font-medium transition-colors ${
+                      physicalLevel === opt.v ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}>
+                    {opt.l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Notas de accesibilidad ────────────────────────────────── */}
+            <Field label="Notas de accesibilidad (opcional)">
+              <textarea rows={2} value={accessibilityNotes} onChange={e => setAccessibilityNotes(e.target.value)}
+                placeholder="Ej: Pasajero en silla de ruedas, adulto mayor con movilidad reducida…"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+            </Field>
+
+            {/* ── Solicitudes especiales ────────────────────────────────── */}
+            <Field label="Solicitudes especiales del grupo (opcional)">
+              <textarea rows={2} value={specialRequests} onChange={e => setSpecialRequests(e.target.value)}
+                placeholder="Ej: Celebración de cumpleaños, fotografía, sorpresa…"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+            </Field>
+
+            {/* ── Materiales a preparar ──────────────────────────────────── */}
+            <Field label="Materiales a preparar (opcional)">
+              <textarea rows={2} value={materialsNeeded} onChange={e => setMaterialsNeeded(e.target.value)}
+                placeholder="Ej: Entradas al parque, mapas, botiquín, banner…"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+            </Field>
+
+            <hr className="border-gray-100" />
+
+            {/* ── Notas generales al equipo ──────────────────────────────── */}
             <Field label="Notas generales al equipo">
               <textarea rows={3} value={guideNotes} onChange={e => setGuideNotes(e.target.value)}
                 placeholder="Instrucciones de ruta, orden de pickups, necesidades especiales del grupo…"
@@ -1764,9 +1945,9 @@ export default function ManualBookingForm({
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
-            PASO 4 — Cobranza
+            PASO 5 — Cobranza
         ══════════════════════════════════════════════════════════════════ */}
-        {step === 4 && (
+        {step === 5 && (
           <div className="flex flex-col gap-4">
 
             <div className="flex flex-col sm:flex-row gap-4 items-start">
@@ -1848,7 +2029,7 @@ export default function ManualBookingForm({
             Anterior
           </button>
 
-          {step < 4 ? (
+          {step < 5 ? (
             <button type="button" onClick={() => setStep(s => s + 1)} disabled={!stepValid(step)}
               className="flex items-center gap-1.5 bg-teal text-white text-sm font-semibold px-5 py-2.5 rounded-xl hover:bg-teal/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
               Siguiente

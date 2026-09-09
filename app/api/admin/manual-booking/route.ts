@@ -54,6 +54,22 @@ const ManualBookingSchema = z.object({
     scope:               z.string().max(1000).optional(),
     notes:               z.string().max(500).optional(),
   })).optional(),
+  departure_time:           z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  departure_address:        z.string().max(300).optional(),
+  agency_departure_notes:   z.string().max(500).optional(),
+  meeting_point:            z.string().max(300).optional(),
+  tour_stops:               z.array(z.object({
+    name:         z.string().max(100),
+    arrival_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    duration_min: z.number().int().min(0).max(480).optional(),
+    notes:        z.string().max(300).optional(),
+  })).optional(),
+  equipment_notes:          z.string().max(500).optional(),
+  dietary_restrictions:     z.string().max(500).optional(),
+  physical_level:           z.enum(['low', 'moderate', 'high', 'very_high']).optional(),
+  accessibility_notes:      z.string().max(500).optional(),
+  special_requests:         z.string().max(500).optional(),
+  materials_needed:         z.string().max(500).optional(),
   payment_status:  z.enum(['pending', 'partial', 'paid']).optional(),
   payment_method:  z.enum(['cash', 'transfer', 'deposit', 'mercadopago', 'invoice', 'other']).optional(),
   amount_paid:     z.number().int().min(0).optional(),
@@ -202,6 +218,11 @@ export async function POST(req: NextRequest) {
       amount_paid:         data.amount_paid     ?? null,
       receipt_ref:         data.receipt_ref     ?? null,
       billing_notes:       data.billing_notes   ?? null,
+      equipment_notes:     data.equipment_notes     ?? null,
+      dietary_restrictions:data.dietary_restrictions ?? null,
+      physical_level:      data.physical_level      ?? null,
+      accessibility_notes: data.accessibility_notes  ?? null,
+      special_requests:    data.special_requests     ?? null,
     })
     .select('id, booking_code, status')
     .single();
@@ -229,9 +250,15 @@ export async function POST(req: NextRequest) {
 
   // ── Operaciones → tour_instance ──────────────────────────────────────────
   const instanceUpdate: Record<string, unknown> = {};
-  if (data.guide_notes        !== undefined) instanceUpdate.guide_notes        = data.guide_notes;
-  if (data.van_id             !== undefined) instanceUpdate.van_id             = data.van_id;
-  if (data.external_van_notes !== undefined) instanceUpdate.external_van_notes = data.external_van_notes;
+  if (data.guide_notes             !== undefined) instanceUpdate.guide_notes             = data.guide_notes;
+  if (data.van_id                  !== undefined) instanceUpdate.van_id                  = data.van_id;
+  if (data.external_van_notes      !== undefined) instanceUpdate.external_van_notes      = data.external_van_notes;
+  if (data.departure_time          !== undefined) instanceUpdate.departure_time          = data.departure_time;
+  if (data.departure_address       !== undefined) instanceUpdate.departure_address       = data.departure_address;
+  if (data.agency_departure_notes  !== undefined) instanceUpdate.agency_departure_notes  = data.agency_departure_notes;
+  if (data.meeting_point           !== undefined) instanceUpdate.meeting_point           = data.meeting_point;
+  if (data.tour_stops              !== undefined) instanceUpdate.tour_stops              = data.tour_stops;
+  if (data.materials_needed        !== undefined) instanceUpdate.materials_needed        = data.materials_needed;
   if (Object.keys(instanceUpdate).length > 0) {
     await supabase.from('tour_instances').update(instanceUpdate).eq('id', instanceId);
   }
