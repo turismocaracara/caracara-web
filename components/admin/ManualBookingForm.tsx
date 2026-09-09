@@ -684,6 +684,7 @@ export default function ManualBookingForm({
         const lead = passengers[0];
         if (!lead || lead.name.trim().length < 2 || lead.id_number.trim().length < 3) return false;
         if (!lead.email.includes('@') || lead.phone.trim().length < 6 || lead.country.trim().length < 2) return false;
+        if (lead.pickup_address.trim().length < 3) return false;
         for (let i = 1; i < passengers.length; i++) {
           const p = passengers[i];
           const hasAny = p.name.trim() || p.id_number.trim();
@@ -1168,7 +1169,7 @@ export default function ManualBookingForm({
                               required
                             />
                           </Field>
-                          <Field label="Dirección de pickup">
+                          <Field label="Dirección de pickup" required>
                             <input value={p.pickup_address} onChange={e => updatePassenger(i,'pickup_address',e.target.value)}
                               placeholder="Hotel Austral, Av. O'Higgins 1234" className={inputClass} />
                           </Field>
