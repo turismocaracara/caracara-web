@@ -105,41 +105,11 @@ function PassengerLookup({ onSelect }: { onSelect: (c: ClientMatch) => void }) {
 export interface GuideOption { id: string; name: string; role: string; }
 export interface VanOption   { id: string; name: string; plate: string | null; capacity: number; }
 
-interface Participant {
-  key:              string;
-  source:           'internal' | 'external';
-  teamMemberId:     string;
-  selectedAgency:   Agency | null;
-  selectedProvider: ServiceProvider | null;
-  providerSearch:   string;
-  role:             string;
-  fee:              string;
-  scope:            string;
-  notes:            string;
-}
-
-function newParticipant(): Participant {
-  return {
-    key:              String(Date.now() + Math.random()),
-    source:           'internal',
-    teamMemberId:     '',
-    selectedAgency:   null,
-    selectedProvider: null,
-    providerSearch:   '',
-    role:             'guide_driver',
-    fee:              '',
-    scope:            '',
-    notes:            '',
-  };
-}
-
-const ROLES = [
-  { v: 'guide_driver', l: 'Guía-conductor'   },
-  { v: 'guide',        l: 'Guía'             },
-  { v: 'driver',       l: 'Conductor'         },
-  { v: 'co_guide',     l: 'Co-guía'          },
-  { v: 'support',      l: 'Apoyo logístico'  },
-  { v: 'other',        l: 'Otro'             },
+const CC_ROLE_BUTTONS = [
+  { key: 'guide',        label: 'Guía'           },
+  { key: 'driver',       label: 'Chofer'         },
+  { key: 'guide_driver', label: 'Guía-Conductor' },
+  { key: 'van',          label: 'Van'            },
 ] as const;
 
 export interface AdminTourOption {
@@ -664,15 +634,27 @@ export default function ManualBookingForm({
   const [passengers,    setPassengers]    = useState<PassengerData[]>([emptyPassenger()]);
   const [tourLanguages, setTourLanguages] = useState<('es'|'en'|'pt')[]>(['es']);
 
-  // ── Paso 3: Operaciones ───────────────────────────────────────────────────
-  const [participants,      setParticipants]      = useState<Participant[]>([newParticipant()]);
-  const [vanSource,         setVanSource]         = useState<'internal'|'external'>('internal');
-  const [vanId,             setVanId]             = useState('');
-  const [externalVanNotes,  setExternalVanNotes]  = useState('');
+  // ── Paso 3: Operaciones — CaraCara ────────────────────────────────────────
+  const [ccRoles,       setCcRoles]       = useState<Set<string>>(new Set());
+  const [ccGuide,       setCcGuide]       = useState({ memberId: '', fee: '' });
+  const [ccDriver,      setCcDriver]      = useState({ memberId: '', vanId: '', fee: '' });
+  const [ccGuideDriver, setCcGuideDriver] = useState({ memberId: '', vanId: '', fee: '' });
+  const [ccVan,         setCcVan]         = useState({ vanId: '' });
+  // ── Paso 3: Operaciones — Externalizado ───────────────────────────────────
+  const [extRoles,       setExtRoles]       = useState<Set<string>>(new Set());
+  const [extSameAgency,  setExtSameAgency]  = useState(true);
+  const [extShared,      setExtShared]      = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string; scope: string }>({
+    search: '', agency: null, provider: null, fee: '', scope: '',
+  });
+  const [extGuide,       setExtGuide]       = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ search: '', agency: null, provider: null, fee: '' });
+  const [extDriver,      setExtDriver]      = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ search: '', agency: null, provider: null, fee: '' });
+  const [extGuideDriver, setExtGuideDriver] = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ search: '', agency: null, provider: null, fee: '' });
+  const [extVan,         setExtVan]         = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ search: '', agency: null, provider: null, fee: '' });
+  // ── Paso 3: Operaciones — Compartido ──────────────────────────────────────
   const [guideNotes,        setGuideNotes]        = useState('');
-  const [providerList,      setProviderList]      = useState<ServiceProvider[]>(initialProviders);
-  const [showProviderModal, setShowProviderModal] = useState(false);
-  const [activeProviderKey, setActiveProviderKey] = useState<string|null>(null);
+  const [providerList,      setProviderList]       = useState<ServiceProvider[]>(initialProviders);
+  const [showProviderModal, setShowProviderModal]  = useState(false);
+  const [activeProviderCtx, setActiveProviderCtx] = useState<'shared'|'guide'|'driver'|'guide_driver'|'van'>('shared');
 
   // ── Paso 4: Cobranza ──────────────────────────────────────────────────────
   const [totalAmount,   setTotalAmount]   = useState('');
@@ -860,24 +842,47 @@ export default function ManualBookingForm({
           has_picnic:          hasPicnic,
           duration_hours:      durationHours ? Number(durationHours) : undefined,
           picnic_notes:        picnicNotes   || undefined,
-          guide_notes:         guideNotes    || undefined,
-          van_id:              vanSource === 'internal' && vanId ? vanId : undefined,
-          external_van_notes:  vanSource === 'external' && externalVanNotes ? externalVanNotes : undefined,
-          participants_ops: participants
-            .filter(p =>
-              (p.source === 'internal' && p.teamMemberId) ||
-              (p.source === 'external' && (p.selectedAgency || p.selectedProvider))
-            )
-            .map(p => ({
-              source:              p.source,
-              team_member_id:      p.source === 'internal' ? p.teamMemberId || undefined : undefined,
-              agency_id:           p.source === 'external' ? p.selectedAgency?.id || undefined : undefined,
-              service_provider_id: p.source === 'external' ? p.selectedProvider?.id || undefined : undefined,
-              role:                p.role  || undefined,
-              fee:                 p.fee   ? Number(p.fee) : undefined,
-              scope:               p.scope || undefined,
-              notes:               p.notes || undefined,
-            })),
+          guide_notes: guideNotes || undefined,
+          van_id: (
+            ccRoles.has('guide_driver') && ccGuideDriver.vanId ? ccGuideDriver.vanId :
+            ccRoles.has('driver')       && ccDriver.vanId      ? ccDriver.vanId :
+            ccRoles.has('van')          && ccVan.vanId         ? ccVan.vanId    : undefined
+          ) || undefined,
+          participants_ops: (() => {
+            const ops: Array<{
+              source: 'internal'|'external';
+              team_member_id?: string; agency_id?: string; service_provider_id?: string;
+              role?: string; fee?: number; scope?: string;
+            }> = [];
+            if (ccRoles.has('guide') && ccGuide.memberId)
+              ops.push({ source:'internal', team_member_id:ccGuide.memberId, role:'guide', fee:ccGuide.fee?Number(ccGuide.fee):undefined });
+            if (ccRoles.has('driver') && ccDriver.memberId)
+              ops.push({ source:'internal', team_member_id:ccDriver.memberId, role:'driver', fee:ccDriver.fee?Number(ccDriver.fee):undefined });
+            if (ccRoles.has('guide_driver') && ccGuideDriver.memberId)
+              ops.push({ source:'internal', team_member_id:ccGuideDriver.memberId, role:'guide_driver', fee:ccGuideDriver.fee?Number(ccGuideDriver.fee):undefined });
+            if (extRoles.size > 0) {
+              if (extSameAgency && (extShared.agency || extShared.provider)) {
+                ops.push({
+                  source: 'external',
+                  agency_id: extShared.agency?.id,
+                  service_provider_id: extShared.provider?.id,
+                  role: Array.from(extRoles).join(','),
+                  fee: extShared.fee ? Number(extShared.fee) : undefined,
+                  scope: extShared.scope || undefined,
+                });
+              } else if (!extSameAgency) {
+                const extMap: Record<string, { agency: Agency|null; provider: ServiceProvider|null; fee: string }> = {
+                  guide: extGuide, driver: extDriver, guide_driver: extGuideDriver, van: extVan,
+                };
+                for (const role of Array.from(extRoles)) {
+                  const c = extMap[role];
+                  if (c && (c.agency || c.provider))
+                    ops.push({ source:'external', agency_id:c.agency?.id, service_provider_id:c.provider?.id, role, fee:c.fee?Number(c.fee):undefined });
+                }
+              }
+            }
+            return ops.length > 0 ? ops : undefined;
+          })(),
           total_amount:     totalAmount ? Number(totalAmount) : undefined,
           price_per_person: pricePerPerson ?? undefined,
           payment_status:   paymentStatus  || undefined,
@@ -1284,191 +1289,378 @@ export default function ManualBookingForm({
 
             <hr className="border-gray-100" />
 
-            {/* ── Equipo y operadores ───────────────────────────────────── */}
+            {/* ── CaraCara ─────────────────────────────────────────────── */}
             <div className="flex flex-col gap-3">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Equipo y operadores</p>
-
-              <div className="flex flex-col gap-3">
-                {participants.map((p, idx) => (
-                  <div key={p.key} className="border border-gray-200 rounded-xl p-4 flex flex-col gap-3 bg-gray-50/40">
-
-                    {/* Header tarjeta */}
-                    <div className="flex items-center gap-2">
-                      {/* Toggle interno / externo */}
-                      <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium flex-shrink-0">
-                        {(['internal','external'] as const).map(src => (
-                          <button key={src} type="button"
-                            onClick={() => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : {
-                              ...pp, source: src,
-                              teamMemberId: '', selectedAgency: null, selectedProvider: null, providerSearch: '',
-                            }))}
-                            className={`px-3 py-1.5 transition-colors ${
-                              p.source === src ? 'bg-teal text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
-                            }`}>
-                            {src === 'internal' ? 'CaraCara' : 'Externo'}
-                          </button>
-                        ))}
-                      </div>
-                      {/* Rol */}
-                      <select value={p.role}
-                        onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, role: e.target.value }))}
-                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal bg-white flex-1 min-w-0">
-                        {ROLES.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}
-                      </select>
-                      {/* Eliminar */}
-                      {participants.length > 1 && (
-                        <button type="button"
-                          onClick={() => setParticipants(prev => prev.filter((_, i) => i !== idx))}
-                          className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 p-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Persona / proveedor */}
-                    {p.source === 'internal' ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <Field label="Persona del equipo">
-                          <select value={p.teamMemberId}
-                            onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, teamMemberId: e.target.value }))}
-                            className={selectClass}>
-                            <option value="">— Sin asignar —</option>
-                            {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                          </select>
-                        </Field>
-                        <Field label="Honorario (CLP)">
-                          <input type="number" min={0} value={p.fee} placeholder="Ej: 45000"
-                            onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, fee: e.target.value }))}
-                            className={inputClass} />
-                        </Field>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-2">
-                        {/* Dropdown unificado agencias + providers */}
-                        <Field label="Agencia o proveedor externo">
-                          <div className="relative">
-                            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-                            </svg>
-                            <input
-                              list={`op-provider-${p.key}`}
-                              value={p.providerSearch}
-                              onChange={e => {
-                                const val = e.target.value;
-                                const matchAgency = agencyList.find(a => a.fantasy_name.toLowerCase() === val.trim().toLowerCase());
-                                const matchProv   = providerList.find(pr => pr.name.toLowerCase() === val.trim().toLowerCase());
-                                setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : {
-                                  ...pp,
-                                  providerSearch:   val,
-                                  selectedAgency:   matchAgency ?? null,
-                                  selectedProvider: matchProv   ?? null,
-                                }));
-                              }}
-                              placeholder="Buscar agencia o proveedor…"
-                              className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-teal w-full"
-                            />
-                            <datalist id={`op-provider-${p.key}`}>
-                              {agencyList.map(a  => <option key={`ag-${a.id}`}  value={a.fantasy_name} />)}
-                              {providerList.map(pr => <option key={`sp-${pr.id}`} value={pr.name} />)}
-                            </datalist>
-                          </div>
-                          {p.selectedAgency && (
-                            <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
-                              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              <span>Agencia · <span className="font-medium">{p.selectedAgency.razon_social}</span></span>
-                            </div>
-                          )}
-                          {!p.selectedAgency && p.selectedProvider && (
-                            <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
-                              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              <span>
-                                {p.selectedProvider.type === 'guide' ? 'Guía externo' : 'Empresa / proveedor'}
-                                {p.selectedProvider.phone && ` · ${p.selectedProvider.phone}`}
-                              </span>
-                            </div>
-                          )}
-                          {!p.selectedAgency && !p.selectedProvider && p.providerSearch.trim().length >= 2 && (
-                            <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
-                              <p className="text-xs text-amber-700 flex-1">
-                                <span className="font-semibold">&ldquo;{p.providerSearch}&rdquo;</span> no está registrado.
-                              </p>
-                              <button type="button"
-                                onClick={() => { setActiveProviderKey(p.key); setShowProviderModal(true); }}
-                                className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">
-                                Registrar proveedor
-                              </button>
-                            </div>
-                          )}
-                        </Field>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <Field label="Monto del servicio (CLP)">
-                            <input type="number" min={0} value={p.fee} placeholder="Ej: 120000"
-                              onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, fee: e.target.value }))}
-                              className={inputClass} />
-                          </Field>
-                        </div>
-                        <Field label="¿Qué contempla?" hint="Transporte, guía, entradas, alimentación…">
-                          <textarea rows={2} value={p.scope} placeholder="Describe qué incluye el servicio…"
-                            onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, scope: e.target.value }))}
-                            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-                        </Field>
-                      </div>
-                    )}
-
-                    {/* Notas por participante */}
-                    <Field label="Notas">
-                      <input value={p.notes} placeholder="Instrucciones, puntos de encuentro, requerimientos…"
-                        onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, notes: e.target.value }))}
-                        className={inputClass} />
-                    </Field>
-                  </div>
+              <div className="flex items-center gap-3">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">CaraCara</p>
+                <div className="h-px flex-1 bg-gray-100" />
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {CC_ROLE_BUTTONS.map(r => (
+                  <button key={r.key} type="button"
+                    onClick={() => setCcRoles(prev => { const n = new Set(prev); n.has(r.key) ? n.delete(r.key) : n.add(r.key); return n; })}
+                    className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${
+                      ccRoles.has(r.key) ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                    }`}>
+                    {r.label}
+                  </button>
                 ))}
               </div>
 
-              <button type="button"
-                onClick={() => setParticipants(prev => [...prev, newParticipant()])}
-                className="flex items-center gap-1.5 text-xs font-semibold text-teal hover:text-teal/80 transition-colors self-start">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Agregar participante
-              </button>
+              {/* Card: Guía CaraCara */}
+              {ccRoles.has('guide') && (
+                <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
+                  <p className="text-xs font-semibold text-teal">Guía</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="Persona del equipo">
+                      <select value={ccGuide.memberId} onChange={e => setCcGuide(s => ({ ...s, memberId: e.target.value }))} className={selectClass}>
+                        <option value="">— Sin asignar —</option>
+                        {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Honorario bruto (CLP)">
+                      <input type="number" min={0} value={ccGuide.fee} placeholder="Ej: 45000"
+                        onChange={e => setCcGuide(s => ({ ...s, fee: e.target.value }))} className={inputClass} />
+                    </Field>
+                  </div>
+                </div>
+              )}
+
+              {/* Card: Chofer CaraCara */}
+              {ccRoles.has('driver') && (
+                <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
+                  <p className="text-xs font-semibold text-teal">Chofer</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="Persona del equipo">
+                      <select value={ccDriver.memberId} onChange={e => setCcDriver(s => ({ ...s, memberId: e.target.value }))} className={selectClass}>
+                        <option value="">— Sin asignar —</option>
+                        {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Vehículo">
+                      <select value={ccDriver.vanId} onChange={e => setCcDriver(s => ({ ...s, vanId: e.target.value }))} className={selectClass}>
+                        <option value="">— Sin asignar —</option>
+                        {vans.map(v => <option key={v.id} value={v.id}>{v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Honorario bruto (CLP)">
+                      <input type="number" min={0} value={ccDriver.fee} placeholder="Ej: 30000"
+                        onChange={e => setCcDriver(s => ({ ...s, fee: e.target.value }))} className={inputClass} />
+                    </Field>
+                  </div>
+                </div>
+              )}
+
+              {/* Card: Guía-Conductor CaraCara */}
+              {ccRoles.has('guide_driver') && (
+                <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
+                  <p className="text-xs font-semibold text-teal">Guía-Conductor</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field label="Persona del equipo">
+                      <select value={ccGuideDriver.memberId} onChange={e => setCcGuideDriver(s => ({ ...s, memberId: e.target.value }))} className={selectClass}>
+                        <option value="">— Sin asignar —</option>
+                        {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Vehículo">
+                      <select value={ccGuideDriver.vanId} onChange={e => setCcGuideDriver(s => ({ ...s, vanId: e.target.value }))} className={selectClass}>
+                        <option value="">— Sin asignar —</option>
+                        {vans.map(v => <option key={v.id} value={v.id}>{v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Honorario bruto (CLP)">
+                      <input type="number" min={0} value={ccGuideDriver.fee} placeholder="Ej: 55000"
+                        onChange={e => setCcGuideDriver(s => ({ ...s, fee: e.target.value }))} className={inputClass} />
+                    </Field>
+                  </div>
+                </div>
+              )}
+
+              {/* Card: Van CaraCara */}
+              {ccRoles.has('van') && (
+                <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
+                  <p className="text-xs font-semibold text-teal">Van</p>
+                  <Field label="Vehículo">
+                    <select value={ccVan.vanId} onChange={e => setCcVan(s => ({ ...s, vanId: e.target.value }))} className={`${selectClass} max-w-sm`}>
+                      <option value="">— Sin asignar —</option>
+                      {vans.map(v => <option key={v.id} value={v.id}>{v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)</option>)}
+                    </select>
+                  </Field>
+                </div>
+              )}
             </div>
 
             <hr className="border-gray-100" />
 
-            {/* ── Vehículo ─────────────────────────────────────────────── */}
+            {/* ── Externalizado ────────────────────────────────────────── */}
             <div className="flex flex-col gap-3">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Vehículo</p>
-              <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium self-start">
-                {(['internal','external'] as const).map(src => (
-                  <button key={src} type="button" onClick={() => { setVanSource(src); setVanId(''); setExternalVanNotes(''); }}
-                    className={`px-4 py-2 transition-colors ${
-                      vanSource === src ? 'bg-teal text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+              <div className="flex items-center gap-3">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Externalizado</p>
+                <div className="h-px flex-1 bg-gray-100" />
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {CC_ROLE_BUTTONS.map(r => (
+                  <button key={r.key} type="button"
+                    onClick={() => setExtRoles(prev => { const n = new Set(prev); n.has(r.key) ? n.delete(r.key) : n.add(r.key); return n; })}
+                    className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${
+                      extRoles.has(r.key) ? 'border-orange bg-orange/5 text-orange' : 'border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}>
-                    {src === 'internal' ? 'Van CaraCara' : 'Vehículo externo'}
+                    {r.label}
                   </button>
                 ))}
               </div>
-              {vanSource === 'internal' ? (
-                <select value={vanId} onChange={e => setVanId(e.target.value)} className={`${selectClass} max-w-sm`}>
-                  <option value="">— Sin asignar —</option>
-                  {vans.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input value={externalVanNotes} onChange={e => setExternalVanNotes(e.target.value)}
-                  placeholder="Descripción del vehículo, patente, empresa…"
-                  className={`${inputClass} max-w-sm`} />
+
+              {extRoles.size > 0 && (
+                <>
+                  {/* Toggle misma agencia / separado */}
+                  <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium self-start">
+                    {([
+                      { v: true,  l: 'Todo con la misma agencia' },
+                      { v: false, l: 'Servicios separados' },
+                    ] as const).map(opt => (
+                      <button key={String(opt.v)} type="button" onClick={() => setExtSameAgency(opt.v)}
+                        className={`px-4 py-2 transition-colors ${
+                          extSameAgency === opt.v ? 'bg-orange text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                        }`}>
+                        {opt.l}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Card única — misma agencia */}
+                  {extSameAgency && (
+                    <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
+                      <p className="text-xs font-semibold text-orange">
+                        {Array.from(extRoles).map(r => CC_ROLE_BUTTONS.find(b => b.key === r)?.label ?? r).join(' + ')}
+                      </p>
+                      <Field label="Agencia o proveedor">
+                        <input list="ext-shared-datalist" value={extShared.search}
+                          onChange={e => {
+                            const val = e.target.value;
+                            const mA = agencyList.find(a => a.fantasy_name.toLowerCase() === val.trim().toLowerCase());
+                            const mP = providerList.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
+                            setExtShared(s => ({ ...s, search: val, agency: mA ?? null, provider: mP ?? null }));
+                          }}
+                          placeholder="Buscar agencia o proveedor…"
+                          className={inputClass}
+                        />
+                        <datalist id="ext-shared-datalist">
+                          {agencyList.map(a => <option key={a.id} value={a.fantasy_name} />)}
+                          {providerList.map(pr => <option key={pr.id} value={pr.name} />)}
+                        </datalist>
+                        {extShared.agency && (
+                          <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            <span>Agencia · <span className="font-medium">{extShared.agency.razon_social}</span></span>
+                          </div>
+                        )}
+                        {!extShared.agency && extShared.provider && (
+                          <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            <span>{extShared.provider.name}</span>
+                          </div>
+                        )}
+                        {!extShared.agency && !extShared.provider && extShared.search.trim().length >= 2 && (
+                          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+                            <p className="text-xs text-amber-700 flex-1"><span className="font-semibold">&ldquo;{extShared.search}&rdquo;</span> no está registrado.</p>
+                            <button type="button" onClick={() => { setActiveProviderCtx('shared'); setShowProviderModal(true); }}
+                              className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">
+                              Registrar proveedor
+                            </button>
+                          </div>
+                        )}
+                      </Field>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Field label="Monto total bruto (CLP)">
+                          <input type="number" min={0} value={extShared.fee} placeholder="Ej: 120000"
+                            onChange={e => setExtShared(s => ({ ...s, fee: e.target.value }))} className={inputClass} />
+                        </Field>
+                      </div>
+                      <Field label="¿Qué contempla?" hint="Transporte, guía, entradas, alimentación…">
+                        <textarea rows={2} value={extShared.scope} placeholder="Describe qué incluye el servicio…"
+                          onChange={e => setExtShared(s => ({ ...s, scope: e.target.value }))}
+                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+                      </Field>
+                    </div>
+                  )}
+
+                  {/* Cards separadas por rol */}
+                  {!extSameAgency && (
+                    <>
+                      {extRoles.has('guide') && (
+                        <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
+                          <p className="text-xs font-semibold text-orange">Guía externo</p>
+                          <Field label="Agencia o proveedor">
+                            <input list="ext-sep-guide" value={extGuide.search}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const mA = agencyList.find(a => a.fantasy_name.toLowerCase() === val.trim().toLowerCase());
+                                const mP = providerList.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
+                                setExtGuide(s => ({ ...s, search: val, agency: mA ?? null, provider: mP ?? null }));
+                              }}
+                              placeholder="Buscar agencia o proveedor…" className={inputClass} />
+                            <datalist id="ext-sep-guide">
+                              {agencyList.map(a => <option key={a.id} value={a.fantasy_name} />)}
+                              {providerList.map(pr => <option key={pr.id} value={pr.name} />)}
+                            </datalist>
+                            {extGuide.agency && (
+                              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                <span>Agencia · <span className="font-medium">{extGuide.agency.razon_social}</span></span>
+                              </div>
+                            )}
+                            {!extGuide.agency && extGuide.provider && (
+                              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                <span>{extGuide.provider.name}</span>
+                              </div>
+                            )}
+                            {!extGuide.agency && !extGuide.provider && extGuide.search.trim().length >= 2 && (
+                              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+                                <p className="text-xs text-amber-700 flex-1"><span className="font-semibold">&ldquo;{extGuide.search}&rdquo;</span> no está registrado.</p>
+                                <button type="button" onClick={() => { setActiveProviderCtx('guide'); setShowProviderModal(true); }}
+                                  className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">Registrar proveedor</button>
+                              </div>
+                            )}
+                          </Field>
+                          <Field label="Monto bruto (CLP)">
+                            <input type="number" min={0} value={extGuide.fee} placeholder="Ej: 60000"
+                              onChange={e => setExtGuide(s => ({ ...s, fee: e.target.value }))} className={`${inputClass} max-w-xs`} />
+                          </Field>
+                        </div>
+                      )}
+
+                      {extRoles.has('driver') && (
+                        <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
+                          <p className="text-xs font-semibold text-orange">Chofer externo</p>
+                          <Field label="Agencia o proveedor">
+                            <input list="ext-sep-driver" value={extDriver.search}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const mA = agencyList.find(a => a.fantasy_name.toLowerCase() === val.trim().toLowerCase());
+                                const mP = providerList.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
+                                setExtDriver(s => ({ ...s, search: val, agency: mA ?? null, provider: mP ?? null }));
+                              }}
+                              placeholder="Buscar agencia o proveedor…" className={inputClass} />
+                            <datalist id="ext-sep-driver">
+                              {agencyList.map(a => <option key={a.id} value={a.fantasy_name} />)}
+                              {providerList.map(pr => <option key={pr.id} value={pr.name} />)}
+                            </datalist>
+                            {extDriver.agency && (
+                              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                <span>Agencia · <span className="font-medium">{extDriver.agency.razon_social}</span></span>
+                              </div>
+                            )}
+                            {!extDriver.agency && extDriver.provider && (
+                              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                <span>{extDriver.provider.name}</span>
+                              </div>
+                            )}
+                            {!extDriver.agency && !extDriver.provider && extDriver.search.trim().length >= 2 && (
+                              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+                                <p className="text-xs text-amber-700 flex-1"><span className="font-semibold">&ldquo;{extDriver.search}&rdquo;</span> no está registrado.</p>
+                                <button type="button" onClick={() => { setActiveProviderCtx('driver'); setShowProviderModal(true); }}
+                                  className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">Registrar proveedor</button>
+                              </div>
+                            )}
+                          </Field>
+                          <Field label="Monto bruto (CLP)">
+                            <input type="number" min={0} value={extDriver.fee} placeholder="Ej: 50000"
+                              onChange={e => setExtDriver(s => ({ ...s, fee: e.target.value }))} className={`${inputClass} max-w-xs`} />
+                          </Field>
+                        </div>
+                      )}
+
+                      {extRoles.has('guide_driver') && (
+                        <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
+                          <p className="text-xs font-semibold text-orange">Guía-Conductor externo</p>
+                          <Field label="Agencia o proveedor">
+                            <input list="ext-sep-guidedriver" value={extGuideDriver.search}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const mA = agencyList.find(a => a.fantasy_name.toLowerCase() === val.trim().toLowerCase());
+                                const mP = providerList.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
+                                setExtGuideDriver(s => ({ ...s, search: val, agency: mA ?? null, provider: mP ?? null }));
+                              }}
+                              placeholder="Buscar agencia o proveedor…" className={inputClass} />
+                            <datalist id="ext-sep-guidedriver">
+                              {agencyList.map(a => <option key={a.id} value={a.fantasy_name} />)}
+                              {providerList.map(pr => <option key={pr.id} value={pr.name} />)}
+                            </datalist>
+                            {extGuideDriver.agency && (
+                              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                <span>Agencia · <span className="font-medium">{extGuideDriver.agency.razon_social}</span></span>
+                              </div>
+                            )}
+                            {!extGuideDriver.agency && extGuideDriver.provider && (
+                              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                <span>{extGuideDriver.provider.name}</span>
+                              </div>
+                            )}
+                            {!extGuideDriver.agency && !extGuideDriver.provider && extGuideDriver.search.trim().length >= 2 && (
+                              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+                                <p className="text-xs text-amber-700 flex-1"><span className="font-semibold">&ldquo;{extGuideDriver.search}&rdquo;</span> no está registrado.</p>
+                                <button type="button" onClick={() => { setActiveProviderCtx('guide_driver'); setShowProviderModal(true); }}
+                                  className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">Registrar proveedor</button>
+                              </div>
+                            )}
+                          </Field>
+                          <Field label="Monto bruto (CLP)">
+                            <input type="number" min={0} value={extGuideDriver.fee} placeholder="Ej: 80000"
+                              onChange={e => setExtGuideDriver(s => ({ ...s, fee: e.target.value }))} className={`${inputClass} max-w-xs`} />
+                          </Field>
+                        </div>
+                      )}
+
+                      {extRoles.has('van') && (
+                        <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
+                          <p className="text-xs font-semibold text-orange">Transporte externo</p>
+                          <Field label="Agencia o proveedor">
+                            <input list="ext-sep-van" value={extVan.search}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const mA = agencyList.find(a => a.fantasy_name.toLowerCase() === val.trim().toLowerCase());
+                                const mP = providerList.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
+                                setExtVan(s => ({ ...s, search: val, agency: mA ?? null, provider: mP ?? null }));
+                              }}
+                              placeholder="Buscar agencia o proveedor…" className={inputClass} />
+                            <datalist id="ext-sep-van">
+                              {agencyList.map(a => <option key={a.id} value={a.fantasy_name} />)}
+                              {providerList.map(pr => <option key={pr.id} value={pr.name} />)}
+                            </datalist>
+                            {extVan.agency && (
+                              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                <span>Agencia · <span className="font-medium">{extVan.agency.razon_social}</span></span>
+                              </div>
+                            )}
+                            {!extVan.agency && extVan.provider && (
+                              <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                <span>{extVan.provider.name}</span>
+                              </div>
+                            )}
+                            {!extVan.agency && !extVan.provider && extVan.search.trim().length >= 2 && (
+                              <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+                                <p className="text-xs text-amber-700 flex-1"><span className="font-semibold">&ldquo;{extVan.search}&rdquo;</span> no está registrado.</p>
+                                <button type="button" onClick={() => { setActiveProviderCtx('van'); setShowProviderModal(true); }}
+                                  className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">Registrar proveedor</button>
+                              </div>
+                            )}
+                          </Field>
+                          <Field label="Monto bruto (CLP)">
+                            <input type="number" min={0} value={extVan.fee} placeholder="Ej: 70000"
+                              onChange={e => setExtVan(s => ({ ...s, fee: e.target.value }))} className={`${inputClass} max-w-xs`} />
+                          </Field>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
               )}
             </div>
 
@@ -1596,20 +1788,23 @@ export default function ManualBookingForm({
 
       {showProviderModal && (
         <ServiceProviderModal
-          initialName={participants.find(p => p.key === activeProviderKey)?.providerSearch ?? ''}
-          onClose={() => { setShowProviderModal(false); setActiveProviderKey(null); }}
+          initialName={
+            activeProviderCtx === 'shared'       ? extShared.search :
+            activeProviderCtx === 'guide'        ? extGuide.search :
+            activeProviderCtx === 'driver'       ? extDriver.search :
+            activeProviderCtx === 'guide_driver' ? extGuideDriver.search :
+            extVan.search
+          }
+          onClose={() => setShowProviderModal(false)}
           onSaved={provider => {
             setProviderList(prev => [...prev, provider].sort((a, b) => a.name.localeCompare(b.name, 'es')));
-            if (activeProviderKey) {
-              setParticipants(prev => prev.map(pp => pp.key !== activeProviderKey ? pp : {
-                ...pp,
-                selectedProvider: provider,
-                selectedAgency:   null,
-                providerSearch:   provider.name,
-              }));
-            }
+            const patch = { provider, agency: null as Agency|null, search: provider.name };
+            if      (activeProviderCtx === 'shared')       setExtShared(s => ({ ...s, ...patch }));
+            else if (activeProviderCtx === 'guide')        setExtGuide(s => ({ ...s, ...patch }));
+            else if (activeProviderCtx === 'driver')       setExtDriver(s => ({ ...s, ...patch }));
+            else if (activeProviderCtx === 'guide_driver') setExtGuideDriver(s => ({ ...s, ...patch }));
+            else                                           setExtVan(s => ({ ...s, ...patch }));
             setShowProviderModal(false);
-            setActiveProviderKey(null);
           }}
         />
       )}
