@@ -684,6 +684,7 @@ export default function ManualBookingForm({
   const [materialsNeeded,      setMaterialsNeeded]      = useState('');
 
   // ── Paso 5: Cobranza ──────────────────────────────────────────────────────
+  const [paymentDoc,    setPaymentDoc]    = useState<File | null>(null);
   const [totalAmount,   setTotalAmount]   = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -864,6 +865,17 @@ export default function ManualBookingForm({
         }
       }
 
+      let paymentDocUrl: string | undefined;
+      if (paymentDoc) {
+        const fd = new FormData();
+        fd.append('file', paymentDoc);
+        const uploadRes = await fetch('/api/admin/upload-booking-doc', { method: 'POST', body: fd });
+        if (uploadRes.ok) {
+          const uploadBody = await uploadRes.json() as { url: string };
+          paymentDocUrl = uploadBody.url;
+        }
+      }
+
       const res = await fetch('/api/admin/manual-booking', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -936,6 +948,7 @@ export default function ManualBookingForm({
           special_requests:     specialRequests      || undefined,
           materials_needed:     materialsNeeded      || undefined,
           agency_doc_url:       agencyDocUrl,
+          payment_doc_url:      paymentDocUrl,
           total_amount:     totalAmount ? Number(totalAmount) : undefined,
           price_per_person: pricePerPerson ?? undefined,
           payment_status:   paymentStatus  || undefined,
@@ -2051,6 +2064,32 @@ export default function ManualBookingForm({
                 placeholder="Cuotas, acuerdos especiales, pendiente de factura, etc."
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
             </Field>
+
+            {/* ── Comprobante de pago ────────────────────────────────────── */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium text-gray-600">Comprobante de pago (opcional)</label>
+              <div className="relative">
+                <input type="file" id="payment-doc-input" accept=".pdf,.png,.jpg,.jpeg,.webp"
+                  onChange={e => setPaymentDoc(e.target.files?.[0] ?? null)}
+                  className="hidden" />
+                <label htmlFor="payment-doc-input"
+                  className="flex items-center gap-2 border border-dashed border-gray-300 rounded-lg px-4 py-3 cursor-pointer hover:border-teal hover:bg-teal/5 transition-colors w-full">
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                  {paymentDoc
+                    ? <span className="text-sm text-gray-700 truncate">{paymentDoc.name}</span>
+                    : <span className="text-sm text-gray-400">Adjuntar comprobante (PDF o imagen)…</span>
+                  }
+                </label>
+                {paymentDoc && (
+                  <button type="button" onClick={() => setPaymentDoc(null)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-red-400 transition-colors">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

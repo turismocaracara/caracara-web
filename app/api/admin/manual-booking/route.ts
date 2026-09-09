@@ -71,6 +71,7 @@ const ManualBookingSchema = z.object({
   special_requests:         z.string().max(500).optional(),
   materials_needed:         z.string().max(500).optional(),
   agency_doc_url:           z.string().url().optional(),
+  payment_doc_url:          z.string().url().optional(),
   payment_status:  z.enum(['pending', 'partial', 'paid']).optional(),
   payment_method:  z.enum(['cash', 'transfer', 'deposit', 'mercadopago', 'invoice', 'other']).optional(),
   amount_paid:     z.number().int().min(0).optional(),
@@ -225,6 +226,7 @@ export async function POST(req: NextRequest) {
       accessibility_notes: data.accessibility_notes  ?? null,
       special_requests:    data.special_requests     ?? null,
       agency_doc_url:      data.agency_doc_url       ?? null,
+      payment_doc_url:     data.payment_doc_url      ?? null,
     })
     .select('id, booking_code, status')
     .single();
