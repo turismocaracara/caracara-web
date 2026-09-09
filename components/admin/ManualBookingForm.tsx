@@ -264,11 +264,12 @@ function PhoneInput({
   required?:    boolean;
   placeholder?: string;
 }) {
-  const parsed           = parsePhone(value);
+  const parsed              = parsePhone(value);
   const [dialCode,  setDialCode]  = useState(parsed.dial);
   const [local,     setLocal]     = useState(parsed.local);
   const [dropOpen,  setDropOpen]  = useState(false);
   const [search,    setSearch]    = useState('');
+  const [customDial, setCustomDial] = useState('');
   const containerRef              = useRef<HTMLDivElement>(null);
 
   // Sincronizar cuando el autocompletado llena el valor desde arriba
@@ -366,6 +367,32 @@ function PhoneInput({
                 <span className="text-gray-400 font-medium">{d.dial}</span>
               </button>
             ))}
+          </div>
+          {/* Código personalizado */}
+          <div className="border-t border-gray-100 px-3 py-2 flex items-center gap-2">
+            <span className="text-[11px] text-gray-400 flex-shrink-0">Otro:</span>
+            <input
+              value={customDial}
+              onChange={e => setCustomDial(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const normalized = customDial.trim().startsWith('+')
+                    ? customDial.trim()
+                    : `+${customDial.trim()}`;
+                  if (/^\+\d{1,4}$/.test(normalized)) {
+                    setDialCode(normalized);
+                    onChange(local ? `${normalized} ${local}` : '');
+                    setDropOpen(false);
+                    setSearch('');
+                    setCustomDial('');
+                  }
+                }
+              }}
+              placeholder="+376"
+              className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-teal w-20"
+            />
+            <span className="text-[10px] text-gray-300">Enter para confirmar</span>
           </div>
         </div>
       )}
