@@ -1,10 +1,106 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import BookingCalendar from '@/components/BookingCalendar';
 import AgencyRegistrationModal, { type Agency } from './AgencyRegistrationModal';
 import ServiceProviderModal, { type ServiceProvider } from './ServiceProviderModal';
+
+interface ClientMatch {
+  id:         string;
+  name:       string;
+  email:      string | null;
+  phone:      string | null;
+  country:    string | null;
+  id_type:    'rut' | 'passport' | null;
+  id_number:  string | null;
+  birth_date: string | null;
+}
+
+function PassengerLookup({ onSelect }: { onSelect: (c: ClientMatch) => void }) {
+  const [query,    setQuery]    = useState('');
+  const [results,  setResults]  = useState<ClientMatch[]>([]);
+  const [loading,  setLoading]  = useState(false);
+  const [open,     setOpen]     = useState(false);
+  const containerRef            = useRef<HTMLDivElement>(null);
+  const timerRef                = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cierra el dropdown al hacer click fuera
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const search = useCallback((q: string) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (q.length < 3) { setResults([]); setOpen(false); return; }
+    timerRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/admin/clients/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json() as ClientMatch[];
+          setResults(data);
+          setOpen(data.length > 0);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+  }, []);
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setQuery(val);
+    search(val);
+  }
+
+  function handleSelect(c: ClientMatch) {
+    onSelect(c);
+    setQuery('');
+    setResults([]);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="relative">
+        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+        </svg>
+        <input
+          value={query}
+          onChange={handleChange}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          placeholder="Buscar por nombre, RUT o email…"
+          className="border border-dashed border-gray-300 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-teal w-full bg-gray-50 placeholder:text-gray-400"
+        />
+        {loading && (
+          <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+        )}
+      </div>
+      {open && results.length > 0 && (
+        <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+          {results.map(c => (
+            <button key={c.id} type="button" onMouseDown={() => handleSelect(c)}
+              className="w-full text-left px-3 py-2.5 hover:bg-teal/5 transition-colors border-b border-gray-50 last:border-0">
+              <p className="text-xs font-semibold text-gray-800">{c.name}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                {[c.email, c.id_number, c.phone].filter(Boolean).join(' · ')}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export interface GuideOption { id: string; name: string; role: string; }
 export interface VanOption   { id: string; name: string; plate: string | null; capacity: number; }
@@ -668,6 +764,18 @@ export default function ManualBookingForm({
                         Grupo {i+1}{i===0 && <span className="ml-1 font-normal text-gray-400">· contacto principal</span>}
                       </p>
                     )}
+                    <PassengerLookup onSelect={c => {
+                      setPassengers(prev => prev.map((pp, idx) => idx !== i ? pp : {
+                        ...pp,
+                        name:       c.name,
+                        email:      c.email      ?? pp.email,
+                        phone:      c.phone      ?? pp.phone,
+                        country:    c.country    ?? pp.country,
+                        id_type:    c.id_type    ?? pp.id_type,
+                        id_number:  c.id_number  ?? pp.id_number,
+                        birth_date: c.birth_date ?? pp.birth_date,
+                      }));
+                    }} />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Field label="Nombre completo" required>
                         <input value={p.name} onChange={e => updatePassenger(i,'name',e.target.value)} className={inputClass} />
@@ -723,6 +831,18 @@ export default function ManualBookingForm({
                       {i > 0 && <span className="text-[10px] font-medium text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">opcional</span>}
                     </div>
                     {i > 0 && <p className="text-xs text-gray-400 -mt-2">Déjalo en blanco si no tienes el dato aún.</p>}
+                    <PassengerLookup onSelect={c => {
+                      setPassengers(prev => prev.map((pp, idx) => idx !== i ? pp : {
+                        ...pp,
+                        name:       c.name,
+                        email:      c.email      ?? pp.email,
+                        phone:      c.phone      ?? pp.phone,
+                        country:    c.country    ?? pp.country,
+                        id_type:    c.id_type    ?? pp.id_type,
+                        id_number:  c.id_number  ?? pp.id_number,
+                        birth_date: c.birth_date ?? pp.birth_date,
+                      }));
+                    }} />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Field label="Nombre completo" required={i===0}>
                         <input value={p.name} onChange={e => updatePassenger(i,'name',e.target.value)} className={inputClass} />
