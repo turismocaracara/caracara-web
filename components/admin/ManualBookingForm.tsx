@@ -670,6 +670,7 @@ export default function ManualBookingForm({
   const [activeProviderCtx, setActiveProviderCtx] = useState<'shared'|'guide'|'driver'|'guide_driver'|'van'>('shared');
 
   // ── Paso 4: Detalles del tour ─────────────────────────────────────────────
+  const [agencyDoc,            setAgencyDoc]            = useState<File | null>(null);
   const [departureTime,        setDepartureTime]        = useState('');
   const [departureAddress,     setDepartureAddress]     = useState('');
   const [agencyDepartureNotes, setAgencyDepartureNotes] = useState('');
@@ -852,6 +853,17 @@ export default function ManualBookingForm({
           .filter((p, i) => i === 0 || (p.name as string).trim().length >= 2);
       }
 
+      let agencyDocUrl: string | undefined;
+      if (agencyDoc) {
+        const fd = new FormData();
+        fd.append('file', agencyDoc);
+        const uploadRes = await fetch('/api/admin/upload-booking-doc', { method: 'POST', body: fd });
+        if (uploadRes.ok) {
+          const uploadBody = await uploadRes.json() as { url: string };
+          agencyDocUrl = uploadBody.url;
+        }
+      }
+
       const res = await fetch('/api/admin/manual-booking', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -923,6 +935,7 @@ export default function ManualBookingForm({
           accessibility_notes:  accessibilityNotes   || undefined,
           special_requests:     specialRequests      || undefined,
           materials_needed:     materialsNeeded      || undefined,
+          agency_doc_url:       agencyDocUrl,
           total_amount:     totalAmount ? Number(totalAmount) : undefined,
           price_per_person: pricePerPerson ?? undefined,
           payment_status:   paymentStatus  || undefined,
@@ -1336,7 +1349,7 @@ export default function ManualBookingForm({
                         </select>
                       </Field>
                       <Field label="Honorario bruto (CLP)">
-                        <input type="number" min={0} value={ccGuide.fees[i] ?? ''} placeholder="Ej: 45000"
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={ccGuide.fees[i] ?? ''} placeholder="Ej: 45000"
                           onChange={e => setCcGuide(s => ({ ...s, fees: s.fees.map((x, j) => j === i ? e.target.value : x) }))} className={inputClass} />
                       </Field>
                     </div>
@@ -1367,7 +1380,7 @@ export default function ManualBookingForm({
                         </select>
                       </Field>
                       <Field label="Honorario bruto (CLP)">
-                        <input type="number" min={0} value={ccDriver.fees[i] ?? ''} placeholder="Ej: 30000"
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={ccDriver.fees[i] ?? ''} placeholder="Ej: 30000"
                           onChange={e => setCcDriver(s => ({ ...s, fees: s.fees.map((x, j) => j === i ? e.target.value : x) }))} className={inputClass} />
                       </Field>
                     </div>
@@ -1398,7 +1411,7 @@ export default function ManualBookingForm({
                         </select>
                       </Field>
                       <Field label="Honorario bruto (CLP)">
-                        <input type="number" min={0} value={ccGuideDriver.fees[i] ?? ''} placeholder="Ej: 55000"
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={ccGuideDriver.fees[i] ?? ''} placeholder="Ej: 55000"
                           onChange={e => setCcGuideDriver(s => ({ ...s, fees: s.fees.map((x, j) => j === i ? e.target.value : x) }))} className={inputClass} />
                       </Field>
                     </div>
@@ -1520,7 +1533,7 @@ export default function ManualBookingForm({
                       </Field>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <Field label="Monto total bruto (CLP)">
-                          <input type="number" min={0} value={extShared.fee} placeholder="Ej: 120000"
+                          <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={extShared.fee} placeholder="Ej: 120000"
                             onChange={e => setExtShared(s => ({ ...s, fee: e.target.value }))} className={inputClass} />
                         </Field>
                       </div>
@@ -1581,7 +1594,7 @@ export default function ManualBookingForm({
                             )}
                           </Field>
                           <Field label="Monto bruto (CLP)">
-                            <input type="number" min={0} value={extGuide.fee} placeholder="Ej: 60000"
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={extGuide.fee} placeholder="Ej: 60000"
                               onChange={e => setExtGuide(s => ({ ...s, fee: e.target.value }))} className={`${inputClass} max-w-xs`} />
                           </Field>
                         </div>
@@ -1633,7 +1646,7 @@ export default function ManualBookingForm({
                             )}
                           </Field>
                           <Field label="Monto bruto (CLP)">
-                            <input type="number" min={0} value={extDriver.fee} placeholder="Ej: 50000"
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={extDriver.fee} placeholder="Ej: 50000"
                               onChange={e => setExtDriver(s => ({ ...s, fee: e.target.value }))} className={`${inputClass} max-w-xs`} />
                           </Field>
                         </div>
@@ -1685,7 +1698,7 @@ export default function ManualBookingForm({
                             )}
                           </Field>
                           <Field label="Monto bruto (CLP)">
-                            <input type="number" min={0} value={extGuideDriver.fee} placeholder="Ej: 80000"
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={extGuideDriver.fee} placeholder="Ej: 80000"
                               onChange={e => setExtGuideDriver(s => ({ ...s, fee: e.target.value }))} className={`${inputClass} max-w-xs`} />
                           </Field>
                         </div>
@@ -1737,7 +1750,7 @@ export default function ManualBookingForm({
                             )}
                           </Field>
                           <Field label="Monto bruto (CLP)">
-                            <input type="number" min={0} value={extVan.fee} placeholder="Ej: 70000"
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={extVan.fee} placeholder="Ej: 70000"
                               onChange={e => setExtVan(s => ({ ...s, fee: e.target.value }))} className={`${inputClass} max-w-xs`} />
                           </Field>
                         </div>
@@ -1757,6 +1770,34 @@ export default function ManualBookingForm({
         {step === 4 && (
           <div className="flex flex-col gap-5">
             <p className="text-xs text-gray-400">Toda la información de este paso es opcional.</p>
+
+            {/* ── Documento adjunto ──────────────────────────────────────── */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-medium text-gray-600">Documento de la agencia (opcional)</label>
+              <div className="relative">
+                <input type="file" id="agency-doc-input" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  onChange={e => setAgencyDoc(e.target.files?.[0] ?? null)}
+                  className="hidden" />
+                <label htmlFor="agency-doc-input"
+                  className="flex items-center gap-2 border border-dashed border-gray-300 rounded-lg px-4 py-3 cursor-pointer hover:border-teal hover:bg-teal/5 transition-colors w-full">
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                  {agencyDoc
+                    ? <span className="text-sm text-gray-700 truncate">{agencyDoc.name}</span>
+                    : <span className="text-sm text-gray-400">Adjuntar PDF, Word, Excel o imagen…</span>
+                  }
+                </label>
+                {agencyDoc && (
+                  <button type="button" onClick={() => setAgencyDoc(null)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-red-400 transition-colors">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <hr className="border-gray-100" />
 
             {/* ── Picnic y duración ──────────────────────────────────────── */}
             <div className="flex flex-col gap-3">
@@ -1782,7 +1823,7 @@ export default function ManualBookingForm({
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">Duración</span>
-                  <input type="number" min={0.5} max={24} step={0.5} value={durationHours}
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min={0.5} max={24} step={0.5} value={durationHours}
                     onChange={e => setDurationHours(e.target.value)} placeholder="horas"
                     className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-24" />
                   {selectedTour?.duration_hours != null && !durationHours && (
@@ -1859,7 +1900,7 @@ export default function ManualBookingForm({
                     <input type="time" value={stop.arrival_time}
                       onChange={e => setTourStops(s => s.map((x, i) => i === idx ? { ...x, arrival_time: e.target.value } : x))}
                       className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-teal w-28" />
-                    <input type="number" min={0} max={480} value={stop.duration_min} placeholder="min"
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min={0} max={480} value={stop.duration_min} placeholder="min"
                       onChange={e => setTourStops(s => s.map((x, i) => i === idx ? { ...x, duration_min: e.target.value } : x))}
                       className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-teal w-20" />
                     <button type="button"
@@ -1952,7 +1993,7 @@ export default function ManualBookingForm({
 
             <div className="flex flex-col sm:flex-row gap-4 items-start">
               <Field label="Total cobrado (CLP)">
-                <input type="number" min={0} value={totalAmount} onChange={e => setTotalAmount(e.target.value)}
+                <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={totalAmount} onChange={e => setTotalAmount(e.target.value)}
                   placeholder="Ej: 180000" className={inputClass} />
               </Field>
               {pricePerPerson !== null && (
@@ -1983,7 +2024,7 @@ export default function ManualBookingForm({
 
             {paymentStatus === 'partial' && (
               <Field label="Monto pagado (CLP)">
-                <input type="number" min={0} value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
+                <input type="number" onWheel={e => e.currentTarget.blur()} min={0} value={amountPaid} onChange={e => setAmountPaid(e.target.value)}
                   placeholder="Ej: 90000" className={`${inputClass} max-w-xs`} />
               </Field>
             )}
