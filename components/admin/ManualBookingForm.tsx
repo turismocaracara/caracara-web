@@ -128,6 +128,85 @@ function emptyPassenger(): PassengerData {
   return { name:'', id_type:'passport', id_number:'', email:'', phone:'', country:'', birth_date:'', pickup_address:'', hotel_name:'' };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RUT chileno: formato y validación de dígito verificador
+// ─────────────────────────────────────────────────────────────────────────────
+
+function formatRut(raw: string): string {
+  // Limpia todo excepto dígitos y K
+  const clean = raw.replace(/[^0-9kK]/g, '').toUpperCase();
+  if (clean.length === 0) return '';
+  const body = clean.slice(0, -1);
+  const dv   = clean.slice(-1);
+  // Agrega puntos al cuerpo (ej: 12345678 → 12.345.678)
+  const formatted = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return body.length > 0 ? `${formatted}-${dv}` : dv;
+}
+
+function validateRut(rut: string): boolean {
+  const clean = rut.replace(/[.\s]/g, '').toUpperCase();
+  const dashIdx = clean.lastIndexOf('-');
+  if (dashIdx < 1) return false;
+  const body = clean.slice(0, dashIdx);
+  const dv   = clean.slice(dashIdx + 1);
+  if (!/^\d+$/.test(body) || body.length < 6) return false;
+  let sum = 0, mul = 2;
+  for (let i = body.length - 1; i >= 0; i--) {
+    sum += parseInt(body[i]) * mul;
+    mul = mul === 7 ? 2 : mul + 1;
+  }
+  const rem      = sum % 11;
+  const expected = rem === 1 ? 'K' : rem === 0 ? '0' : String(11 - rem);
+  return dv === expected;
+}
+
+function DocNumberInput({
+  idType, value, onChange, required, className,
+}: {
+  idType:    'rut' | 'passport';
+  value:     string;
+  onChange:  (v: string) => void;
+  required?: boolean;
+  className?: string;
+}) {
+  const isRut = idType === 'rut';
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (isRut) {
+      onChange(formatRut(e.target.value));
+    } else {
+      onChange(e.target.value.toUpperCase());
+    }
+  }
+
+  // Mostrar feedback solo cuando hay suficientes caracteres
+  const minLen     = isRut ? 8 : 5;   // 12.345.6-7 mínimo para RUT
+  const showFb     = value.replace(/[^0-9kKa-zA-Z]/g, '').length >= minLen;
+  const isValid    = isRut ? validateRut(value) : value.trim().length >= 5;
+  const borderCls  = showFb
+    ? isValid ? 'border-green-300 focus:border-green-400' : 'border-red-300 focus:border-red-400'
+    : '';
+
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        onChange={handleChange}
+        placeholder={isRut ? '12.345.678-9' : 'AB1234567'}
+        required={required}
+        className={`${className ?? ''} ${borderCls} pr-8`}
+      />
+      {showFb && (
+        <span className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-sm font-bold pointer-events-none ${
+          isValid ? 'text-green-500' : 'text-red-400'
+        }`}>
+          {isValid ? '✓' : '✗'}
+        </span>
+      )}
+    </div>
+  );
+}
+
 const TOUR_LANGUAGES: { code: 'es'|'en'|'pt'; label: string }[] = [
   { code:'es', label:'Español' },
   { code:'en', label:'Inglés'  },
@@ -804,13 +883,21 @@ export default function ManualBookingForm({
                           <input type="email" value={p.email} onChange={e => updatePassenger(i,'email',e.target.value)} className={inputClass} />
                         </Field>
                         <Field label="Tipo de documento">
-                          <select value={p.id_type} onChange={e => updatePassenger(i,'id_type',e.target.value as 'rut'|'passport')} className={selectClass}>
+                          <select value={p.id_type} onChange={e => {
+                            updatePassenger(i,'id_type',e.target.value);
+                            updatePassenger(i,'id_number','');
+                          }} className={selectClass}>
                             <option value="passport">Pasaporte</option>
                             <option value="rut">RUT</option>
                           </select>
                         </Field>
                         <Field label="N° de documento">
-                          <input value={p.id_number} onChange={e => updatePassenger(i,'id_number',e.target.value)} className={inputClass} />
+                          <DocNumberInput
+                            idType={p.id_type}
+                            value={p.id_number}
+                            onChange={v => updatePassenger(i,'id_number',v)}
+                            className={inputClass}
+                          />
                         </Field>
                         <Field label="País de origen">
                           <input value={p.country} onChange={e => updatePassenger(i,'country',e.target.value)} className={inputClass} />
@@ -848,12 +935,22 @@ export default function ManualBookingForm({
                         <input value={p.name} onChange={e => updatePassenger(i,'name',e.target.value)} className={inputClass} />
                       </Field>
                       <Field label="Tipo de documento" required={i===0}>
-                        <select value={p.id_type} onChange={e => updatePassenger(i,'id_type',e.target.value as 'rut'|'passport')} className={selectClass}>
-                          <option value="passport">Pasaporte</option><option value="rut">RUT</option>
+                        <select value={p.id_type} onChange={e => {
+                          updatePassenger(i,'id_type',e.target.value);
+                          updatePassenger(i,'id_number','');
+                        }} className={selectClass}>
+                          <option value="passport">Pasaporte</option>
+                          <option value="rut">RUT</option>
                         </select>
                       </Field>
                       <Field label="N° de documento" required={i===0}>
-                        <input value={p.id_number} onChange={e => updatePassenger(i,'id_number',e.target.value)} className={inputClass} />
+                        <DocNumberInput
+                          idType={p.id_type}
+                          value={p.id_number}
+                          onChange={v => updatePassenger(i,'id_number',v)}
+                          required={i===0}
+                          className={inputClass}
+                        />
                       </Field>
                       {i===0 && (
                         <>
