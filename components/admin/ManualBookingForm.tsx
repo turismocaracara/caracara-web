@@ -637,8 +637,8 @@ export default function ManualBookingForm({
   // ── Paso 3: Operaciones — CaraCara ────────────────────────────────────────
   const [ccRoles,       setCcRoles]       = useState<Set<string>>(new Set());
   const [ccGuide,       setCcGuide]       = useState({ memberId: '', fee: '' });
-  const [ccDriver,      setCcDriver]      = useState({ memberId: '', vanId: '', fee: '' });
-  const [ccGuideDriver, setCcGuideDriver] = useState({ memberId: '', vanId: '', fee: '' });
+  const [ccDriver,      setCcDriver]      = useState({ memberId: '', fee: '' });
+  const [ccGuideDriver, setCcGuideDriver] = useState({ memberId: '', fee: '' });
   const [ccVan,         setCcVan]         = useState({ vanId: '' });
   // ── Paso 3: Operaciones — Externalizado ───────────────────────────────────
   const [extRoles,       setExtRoles]       = useState<Set<string>>(new Set());
@@ -843,11 +843,7 @@ export default function ManualBookingForm({
           duration_hours:      durationHours ? Number(durationHours) : undefined,
           picnic_notes:        picnicNotes   || undefined,
           guide_notes: guideNotes || undefined,
-          van_id: (
-            ccRoles.has('guide_driver') && ccGuideDriver.vanId ? ccGuideDriver.vanId :
-            ccRoles.has('driver')       && ccDriver.vanId      ? ccDriver.vanId :
-            ccRoles.has('van')          && ccVan.vanId         ? ccVan.vanId    : undefined
-          ) || undefined,
+          van_id: ccRoles.has('van') && ccVan.vanId ? ccVan.vanId : undefined,
           participants_ops: (() => {
             const ops: Array<{
               source: 'internal'|'external';
@@ -1298,7 +1294,8 @@ export default function ManualBookingForm({
               <div className="flex gap-2 flex-wrap">
                 {CC_ROLE_BUTTONS.map(r => (
                   <button key={r.key} type="button"
-                    onClick={() => setCcRoles(prev => { const n = new Set(prev); n.has(r.key) ? n.delete(r.key) : n.add(r.key); return n; })}
+                    onClick={() => setCcRoles(prev => { const n = new Set(prev); n.add(r.key); return n; })}
+                    disabled={ccRoles.has(r.key)}
                     className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${
                       ccRoles.has(r.key) ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}>
@@ -1310,7 +1307,13 @@ export default function ManualBookingForm({
               {/* Card: Guía CaraCara */}
               {ccRoles.has('guide') && (
                 <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
-                  <p className="text-xs font-semibold text-teal">Guía</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-teal">Guía</p>
+                    <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('guide'); return n; })}
+                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Field label="Persona del equipo">
                       <select value={ccGuide.memberId} onChange={e => setCcGuide(s => ({ ...s, memberId: e.target.value }))} className={selectClass}>
@@ -1329,18 +1332,18 @@ export default function ManualBookingForm({
               {/* Card: Chofer CaraCara */}
               {ccRoles.has('driver') && (
                 <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
-                  <p className="text-xs font-semibold text-teal">Chofer</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-teal">Chofer</p>
+                    <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('driver'); return n; })}
+                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Field label="Persona del equipo">
                       <select value={ccDriver.memberId} onChange={e => setCcDriver(s => ({ ...s, memberId: e.target.value }))} className={selectClass}>
                         <option value="">— Sin asignar —</option>
                         {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Vehículo">
-                      <select value={ccDriver.vanId} onChange={e => setCcDriver(s => ({ ...s, vanId: e.target.value }))} className={selectClass}>
-                        <option value="">— Sin asignar —</option>
-                        {vans.map(v => <option key={v.id} value={v.id}>{v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)</option>)}
                       </select>
                     </Field>
                     <Field label="Honorario bruto (CLP)">
@@ -1354,18 +1357,18 @@ export default function ManualBookingForm({
               {/* Card: Guía-Conductor CaraCara */}
               {ccRoles.has('guide_driver') && (
                 <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
-                  <p className="text-xs font-semibold text-teal">Guía-Conductor</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-teal">Guía-Conductor</p>
+                    <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('guide_driver'); return n; })}
+                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Field label="Persona del equipo">
                       <select value={ccGuideDriver.memberId} onChange={e => setCcGuideDriver(s => ({ ...s, memberId: e.target.value }))} className={selectClass}>
                         <option value="">— Sin asignar —</option>
                         {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Vehículo">
-                      <select value={ccGuideDriver.vanId} onChange={e => setCcGuideDriver(s => ({ ...s, vanId: e.target.value }))} className={selectClass}>
-                        <option value="">— Sin asignar —</option>
-                        {vans.map(v => <option key={v.id} value={v.id}>{v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)</option>)}
                       </select>
                     </Field>
                     <Field label="Honorario bruto (CLP)">
@@ -1379,7 +1382,13 @@ export default function ManualBookingForm({
               {/* Card: Van CaraCara */}
               {ccRoles.has('van') && (
                 <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
-                  <p className="text-xs font-semibold text-teal">Van</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-teal">Van</p>
+                    <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('van'); return n; })}
+                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
                   <Field label="Vehículo">
                     <select value={ccVan.vanId} onChange={e => setCcVan(s => ({ ...s, vanId: e.target.value }))} className={`${selectClass} max-w-sm`}>
                       <option value="">— Sin asignar —</option>
@@ -1401,7 +1410,8 @@ export default function ManualBookingForm({
               <div className="flex gap-2 flex-wrap">
                 {CC_ROLE_BUTTONS.map(r => (
                   <button key={r.key} type="button"
-                    onClick={() => setExtRoles(prev => { const n = new Set(prev); n.has(r.key) ? n.delete(r.key) : n.add(r.key); return n; })}
+                    onClick={() => setExtRoles(prev => { const n = new Set(prev); n.add(r.key); return n; })}
+                    disabled={extRoles.has(r.key)}
                     className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${
                       extRoles.has(r.key) ? 'border-orange bg-orange/5 text-orange' : 'border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}>
@@ -1430,9 +1440,15 @@ export default function ManualBookingForm({
                   {/* Card única — misma agencia */}
                   {extSameAgency && (
                     <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
-                      <p className="text-xs font-semibold text-orange">
-                        {Array.from(extRoles).map(r => CC_ROLE_BUTTONS.find(b => b.key === r)?.label ?? r).join(' + ')}
-                      </p>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold text-orange">
+                          {Array.from(extRoles).map(r => CC_ROLE_BUTTONS.find(b => b.key === r)?.label ?? r).join(' + ')}
+                        </p>
+                        <button type="button" onClick={() => setExtRoles(new Set())}
+                          className="text-gray-300 hover:text-red-400 transition-colors p-0.5 flex-shrink-0">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
                       <Field label="Agencia o proveedor">
                         <input list="ext-shared-datalist" value={extShared.search}
                           onChange={e => {
@@ -1489,7 +1505,13 @@ export default function ManualBookingForm({
                     <>
                       {extRoles.has('guide') && (
                         <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
-                          <p className="text-xs font-semibold text-orange">Guía externo</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-orange">Guía externo</p>
+                            <button type="button" onClick={() => setExtRoles(prev => { const n = new Set(prev); n.delete('guide'); return n; })}
+                              className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
                           <Field label="Agencia o proveedor">
                             <input list="ext-sep-guide" value={extGuide.search}
                               onChange={e => {
@@ -1532,7 +1554,13 @@ export default function ManualBookingForm({
 
                       {extRoles.has('driver') && (
                         <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
-                          <p className="text-xs font-semibold text-orange">Chofer externo</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-orange">Chofer externo</p>
+                            <button type="button" onClick={() => setExtRoles(prev => { const n = new Set(prev); n.delete('driver'); return n; })}
+                              className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
                           <Field label="Agencia o proveedor">
                             <input list="ext-sep-driver" value={extDriver.search}
                               onChange={e => {
@@ -1575,7 +1603,13 @@ export default function ManualBookingForm({
 
                       {extRoles.has('guide_driver') && (
                         <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
-                          <p className="text-xs font-semibold text-orange">Guía-Conductor externo</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-orange">Guía-Conductor externo</p>
+                            <button type="button" onClick={() => setExtRoles(prev => { const n = new Set(prev); n.delete('guide_driver'); return n; })}
+                              className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
                           <Field label="Agencia o proveedor">
                             <input list="ext-sep-guidedriver" value={extGuideDriver.search}
                               onChange={e => {
@@ -1618,7 +1652,13 @@ export default function ManualBookingForm({
 
                       {extRoles.has('van') && (
                         <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
-                          <p className="text-xs font-semibold text-orange">Transporte externo</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs font-semibold text-orange">Transporte externo</p>
+                            <button type="button" onClick={() => setExtRoles(prev => { const n = new Set(prev); n.delete('van'); return n; })}
+                              className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          </div>
                           <Field label="Agencia o proveedor">
                             <input list="ext-sep-van" value={extVan.search}
                               onChange={e => {
