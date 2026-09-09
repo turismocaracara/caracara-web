@@ -112,6 +112,11 @@ const CC_ROLE_BUTTONS = [
   { key: 'van',          label: 'Van'            },
 ] as const;
 
+function resizeArr(arr: string[], n: number): string[] {
+  if (n > arr.length) return [...arr, ...Array<string>(n - arr.length).fill('')];
+  return arr.slice(0, n);
+}
+
 export interface AdminTourOption {
   slug:           string;
   name_es:        string;
@@ -636,20 +641,20 @@ export default function ManualBookingForm({
 
   // ── Paso 3: Operaciones — CaraCara ────────────────────────────────────────
   const [ccRoles,       setCcRoles]       = useState<Set<string>>(new Set());
-  const [ccGuide,       setCcGuide]       = useState({ memberId: '', fee: '' });
-  const [ccDriver,      setCcDriver]      = useState({ memberId: '', fee: '' });
-  const [ccGuideDriver, setCcGuideDriver] = useState({ memberId: '', fee: '' });
-  const [ccVan,         setCcVan]         = useState({ vanId: '' });
+  const [ccGuide,       setCcGuide]       = useState({ members: [''] as string[], fees: [''] as string[] });
+  const [ccDriver,      setCcDriver]      = useState({ members: [''] as string[], fees: [''] as string[] });
+  const [ccGuideDriver, setCcGuideDriver] = useState({ members: [''] as string[], fees: [''] as string[] });
+  const [ccVan,         setCcVan]         = useState({ vanIds: [''] as string[] });
   // ── Paso 3: Operaciones — Externalizado ───────────────────────────────────
   const [extRoles,       setExtRoles]       = useState<Set<string>>(new Set());
   const [extSameAgency,  setExtSameAgency]  = useState(true);
   const [extShared,      setExtShared]      = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string; scope: string }>({
     search: '', agency: null, provider: null, fee: '', scope: '',
   });
-  const [extGuide,       setExtGuide]       = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ search: '', agency: null, provider: null, fee: '' });
-  const [extDriver,      setExtDriver]      = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ search: '', agency: null, provider: null, fee: '' });
-  const [extGuideDriver, setExtGuideDriver] = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ search: '', agency: null, provider: null, fee: '' });
-  const [extVan,         setExtVan]         = useState<{ search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ search: '', agency: null, provider: null, fee: '' });
+  const [extGuide,       setExtGuide]       = useState<{ qty: number; search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ qty: 1, search: '', agency: null, provider: null, fee: '' });
+  const [extDriver,      setExtDriver]      = useState<{ qty: number; search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ qty: 1, search: '', agency: null, provider: null, fee: '' });
+  const [extGuideDriver, setExtGuideDriver] = useState<{ qty: number; search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ qty: 1, search: '', agency: null, provider: null, fee: '' });
+  const [extVan,         setExtVan]         = useState<{ qty: number; search: string; agency: Agency|null; provider: ServiceProvider|null; fee: string }>({ qty: 1, search: '', agency: null, provider: null, fee: '' });
   // ── Paso 3: Operaciones — Compartido ──────────────────────────────────────
   const [guideNotes,        setGuideNotes]        = useState('');
   const [providerList,      setProviderList]       = useState<ServiceProvider[]>(initialProviders);
@@ -843,19 +848,21 @@ export default function ManualBookingForm({
           duration_hours:      durationHours ? Number(durationHours) : undefined,
           picnic_notes:        picnicNotes   || undefined,
           guide_notes: guideNotes || undefined,
-          van_id: ccRoles.has('van') && ccVan.vanId ? ccVan.vanId : undefined,
+          van_id: ccRoles.has('van') ? (ccVan.vanIds.find(Boolean) ?? undefined) : undefined,
           participants_ops: (() => {
             const ops: Array<{
               source: 'internal'|'external';
               team_member_id?: string; agency_id?: string; service_provider_id?: string;
               role?: string; fee?: number; scope?: string;
             }> = [];
-            if (ccRoles.has('guide') && ccGuide.memberId)
-              ops.push({ source:'internal', team_member_id:ccGuide.memberId, role:'guide', fee:ccGuide.fee?Number(ccGuide.fee):undefined });
-            if (ccRoles.has('driver') && ccDriver.memberId)
-              ops.push({ source:'internal', team_member_id:ccDriver.memberId, role:'driver', fee:ccDriver.fee?Number(ccDriver.fee):undefined });
-            if (ccRoles.has('guide_driver') && ccGuideDriver.memberId)
-              ops.push({ source:'internal', team_member_id:ccGuideDriver.memberId, role:'guide_driver', fee:ccGuideDriver.fee?Number(ccGuideDriver.fee):undefined });
+            // CaraCara — un ops por cada persona asignada
+            if (ccRoles.has('guide'))
+              ccGuide.members.forEach((m, i) => { if (m) ops.push({ source:'internal', team_member_id:m, role:'guide', fee:ccGuide.fees[i]?Number(ccGuide.fees[i]):undefined }); });
+            if (ccRoles.has('driver'))
+              ccDriver.members.forEach((m, i) => { if (m) ops.push({ source:'internal', team_member_id:m, role:'driver', fee:ccDriver.fees[i]?Number(ccDriver.fees[i]):undefined }); });
+            if (ccRoles.has('guide_driver'))
+              ccGuideDriver.members.forEach((m, i) => { if (m) ops.push({ source:'internal', team_member_id:m, role:'guide_driver', fee:ccGuideDriver.fees[i]?Number(ccGuideDriver.fees[i]):undefined }); });
+            // Externos
             if (extRoles.size > 0) {
               if (extSameAgency && (extShared.agency || extShared.provider)) {
                 ops.push({
@@ -867,13 +874,13 @@ export default function ManualBookingForm({
                   scope: extShared.scope || undefined,
                 });
               } else if (!extSameAgency) {
-                const extMap: Record<string, { agency: Agency|null; provider: ServiceProvider|null; fee: string }> = {
+                const extMap: Record<string, { qty: number; agency: Agency|null; provider: ServiceProvider|null; fee: string }> = {
                   guide: extGuide, driver: extDriver, guide_driver: extGuideDriver, van: extVan,
                 };
                 for (const role of Array.from(extRoles)) {
                   const c = extMap[role];
                   if (c && (c.agency || c.provider))
-                    ops.push({ source:'external', agency_id:c.agency?.id, service_provider_id:c.provider?.id, role, fee:c.fee?Number(c.fee):undefined });
+                    ops.push({ source:'external', agency_id:c.agency?.id, service_provider_id:c.provider?.id, role, fee:c.fee?Number(c.fee):undefined, scope:c.qty>1?`Cantidad: ${c.qty}`:undefined });
                 }
               }
             }
@@ -1294,8 +1301,7 @@ export default function ManualBookingForm({
               <div className="flex gap-2 flex-wrap">
                 {CC_ROLE_BUTTONS.map(r => (
                   <button key={r.key} type="button"
-                    onClick={() => setCcRoles(prev => { const n = new Set(prev); n.add(r.key); return n; })}
-                    disabled={ccRoles.has(r.key)}
+                    onClick={() => setCcRoles(prev => { const n = new Set(prev); if (n.has(r.key)) n.delete(r.key); else n.add(r.key); return n; })}
                     className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${
                       ccRoles.has(r.key) ? 'border-teal bg-teal/5 text-teal' : 'border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}>
@@ -1309,23 +1315,29 @@ export default function ManualBookingForm({
                 <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-teal">Guía</p>
-                    <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('guide'); return n; })}
-                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <Counter value={ccGuide.members.length} min={1} max={6}
+                        onChange={n => setCcGuide(s => ({ members: resizeArr(s.members, n), fees: resizeArr(s.fees, n) }))} />
+                      <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('guide'); return n; })}
+                        className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Persona del equipo">
-                      <select value={ccGuide.memberId} onChange={e => setCcGuide(s => ({ ...s, memberId: e.target.value }))} className={selectClass}>
-                        <option value="">— Sin asignar —</option>
-                        {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Honorario bruto (CLP)">
-                      <input type="number" min={0} value={ccGuide.fee} placeholder="Ej: 45000"
-                        onChange={e => setCcGuide(s => ({ ...s, fee: e.target.value }))} className={inputClass} />
-                    </Field>
-                  </div>
+                  {ccGuide.members.map((m, i) => (
+                    <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field label={ccGuide.members.length > 1 ? `Persona ${i + 1}` : 'Persona del equipo'}>
+                        <select value={m} onChange={e => setCcGuide(s => ({ ...s, members: s.members.map((x, j) => j === i ? e.target.value : x) }))} className={selectClass}>
+                          <option value="">— Sin asignar —</option>
+                          {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Honorario bruto (CLP)">
+                        <input type="number" min={0} value={ccGuide.fees[i] ?? ''} placeholder="Ej: 45000"
+                          onChange={e => setCcGuide(s => ({ ...s, fees: s.fees.map((x, j) => j === i ? e.target.value : x) }))} className={inputClass} />
+                      </Field>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1334,23 +1346,29 @@ export default function ManualBookingForm({
                 <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-teal">Chofer</p>
-                    <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('driver'); return n; })}
-                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <Counter value={ccDriver.members.length} min={1} max={6}
+                        onChange={n => setCcDriver(s => ({ members: resizeArr(s.members, n), fees: resizeArr(s.fees, n) }))} />
+                      <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('driver'); return n; })}
+                        className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Persona del equipo">
-                      <select value={ccDriver.memberId} onChange={e => setCcDriver(s => ({ ...s, memberId: e.target.value }))} className={selectClass}>
-                        <option value="">— Sin asignar —</option>
-                        {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Honorario bruto (CLP)">
-                      <input type="number" min={0} value={ccDriver.fee} placeholder="Ej: 30000"
-                        onChange={e => setCcDriver(s => ({ ...s, fee: e.target.value }))} className={inputClass} />
-                    </Field>
-                  </div>
+                  {ccDriver.members.map((m, i) => (
+                    <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field label={ccDriver.members.length > 1 ? `Persona ${i + 1}` : 'Persona del equipo'}>
+                        <select value={m} onChange={e => setCcDriver(s => ({ ...s, members: s.members.map((x, j) => j === i ? e.target.value : x) }))} className={selectClass}>
+                          <option value="">— Sin asignar —</option>
+                          {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Honorario bruto (CLP)">
+                        <input type="number" min={0} value={ccDriver.fees[i] ?? ''} placeholder="Ej: 30000"
+                          onChange={e => setCcDriver(s => ({ ...s, fees: s.fees.map((x, j) => j === i ? e.target.value : x) }))} className={inputClass} />
+                      </Field>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1359,23 +1377,29 @@ export default function ManualBookingForm({
                 <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-teal">Guía-Conductor</p>
-                    <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('guide_driver'); return n; })}
-                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <Counter value={ccGuideDriver.members.length} min={1} max={6}
+                        onChange={n => setCcGuideDriver(s => ({ members: resizeArr(s.members, n), fees: resizeArr(s.fees, n) }))} />
+                      <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('guide_driver'); return n; })}
+                        className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Field label="Persona del equipo">
-                      <select value={ccGuideDriver.memberId} onChange={e => setCcGuideDriver(s => ({ ...s, memberId: e.target.value }))} className={selectClass}>
-                        <option value="">— Sin asignar —</option>
-                        {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Honorario bruto (CLP)">
-                      <input type="number" min={0} value={ccGuideDriver.fee} placeholder="Ej: 55000"
-                        onChange={e => setCcGuideDriver(s => ({ ...s, fee: e.target.value }))} className={inputClass} />
-                    </Field>
-                  </div>
+                  {ccGuideDriver.members.map((m, i) => (
+                    <div key={i} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field label={ccGuideDriver.members.length > 1 ? `Persona ${i + 1}` : 'Persona del equipo'}>
+                        <select value={m} onChange={e => setCcGuideDriver(s => ({ ...s, members: s.members.map((x, j) => j === i ? e.target.value : x) }))} className={selectClass}>
+                          <option value="">— Sin asignar —</option>
+                          {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Honorario bruto (CLP)">
+                        <input type="number" min={0} value={ccGuideDriver.fees[i] ?? ''} placeholder="Ej: 55000"
+                          onChange={e => setCcGuideDriver(s => ({ ...s, fees: s.fees.map((x, j) => j === i ? e.target.value : x) }))} className={inputClass} />
+                      </Field>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1384,17 +1408,23 @@ export default function ManualBookingForm({
                 <div className="border border-teal/20 bg-teal/5 rounded-xl p-4 flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold text-teal">Van</p>
-                    <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('van'); return n; })}
-                      className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <Counter value={ccVan.vanIds.length} min={1} max={6}
+                        onChange={n => setCcVan(s => ({ vanIds: resizeArr(s.vanIds, n) }))} />
+                      <button type="button" onClick={() => setCcRoles(prev => { const n = new Set(prev); n.delete('van'); return n; })}
+                        className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
                   </div>
-                  <Field label="Vehículo">
-                    <select value={ccVan.vanId} onChange={e => setCcVan(s => ({ ...s, vanId: e.target.value }))} className={`${selectClass} max-w-sm`}>
-                      <option value="">— Sin asignar —</option>
-                      {vans.map(v => <option key={v.id} value={v.id}>{v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)</option>)}
-                    </select>
-                  </Field>
+                  {ccVan.vanIds.map((vid, i) => (
+                    <Field key={i} label={ccVan.vanIds.length > 1 ? `Vehículo ${i + 1}` : 'Vehículo'}>
+                      <select value={vid} onChange={e => setCcVan(s => ({ vanIds: s.vanIds.map((x, j) => j === i ? e.target.value : x) }))} className={`${selectClass} max-w-sm`}>
+                        <option value="">— Sin asignar —</option>
+                        {vans.map(v => <option key={v.id} value={v.id}>{v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)</option>)}
+                      </select>
+                    </Field>
+                  ))}
                 </div>
               )}
             </div>
@@ -1410,8 +1440,7 @@ export default function ManualBookingForm({
               <div className="flex gap-2 flex-wrap">
                 {CC_ROLE_BUTTONS.map(r => (
                   <button key={r.key} type="button"
-                    onClick={() => setExtRoles(prev => { const n = new Set(prev); n.add(r.key); return n; })}
-                    disabled={extRoles.has(r.key)}
+                    onClick={() => setExtRoles(prev => { const n = new Set(prev); if (n.has(r.key)) n.delete(r.key); else n.add(r.key); return n; })}
                     className={`px-4 py-2 rounded-lg text-xs font-semibold border-2 transition-all ${
                       extRoles.has(r.key) ? 'border-orange bg-orange/5 text-orange' : 'border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}>
@@ -1506,7 +1535,10 @@ export default function ManualBookingForm({
                       {extRoles.has('guide') && (
                         <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-semibold text-orange">Guía externo</p>
+                            <div className="flex items-center gap-3">
+                              <p className="text-xs font-semibold text-orange">Guía externo</p>
+                              <Counter value={extGuide.qty} min={1} max={10} onChange={n => setExtGuide(s => ({ ...s, qty: n }))} />
+                            </div>
                             <button type="button" onClick={() => setExtRoles(prev => { const n = new Set(prev); n.delete('guide'); return n; })}
                               className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1555,7 +1587,10 @@ export default function ManualBookingForm({
                       {extRoles.has('driver') && (
                         <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-semibold text-orange">Chofer externo</p>
+                            <div className="flex items-center gap-3">
+                              <p className="text-xs font-semibold text-orange">Chofer externo</p>
+                              <Counter value={extDriver.qty} min={1} max={10} onChange={n => setExtDriver(s => ({ ...s, qty: n }))} />
+                            </div>
                             <button type="button" onClick={() => setExtRoles(prev => { const n = new Set(prev); n.delete('driver'); return n; })}
                               className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1604,7 +1639,10 @@ export default function ManualBookingForm({
                       {extRoles.has('guide_driver') && (
                         <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-semibold text-orange">Guía-Conductor externo</p>
+                            <div className="flex items-center gap-3">
+                              <p className="text-xs font-semibold text-orange">Guía-Conductor externo</p>
+                              <Counter value={extGuideDriver.qty} min={1} max={10} onChange={n => setExtGuideDriver(s => ({ ...s, qty: n }))} />
+                            </div>
                             <button type="button" onClick={() => setExtRoles(prev => { const n = new Set(prev); n.delete('guide_driver'); return n; })}
                               className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -1653,7 +1691,10 @@ export default function ManualBookingForm({
                       {extRoles.has('van') && (
                         <div className="border border-orange/20 bg-orange/5 rounded-xl p-4 flex flex-col gap-3">
                           <div className="flex items-center justify-between">
-                            <p className="text-xs font-semibold text-orange">Transporte externo</p>
+                            <div className="flex items-center gap-3">
+                              <p className="text-xs font-semibold text-orange">Transporte externo</p>
+                              <Counter value={extVan.qty} min={1} max={10} onChange={n => setExtVan(s => ({ ...s, qty: n }))} />
+                            </div>
                             <button type="button" onClick={() => setExtRoles(prev => { const n = new Set(prev); n.delete('van'); return n; })}
                               className="text-gray-300 hover:text-red-400 transition-colors p-0.5">
                               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
