@@ -909,6 +909,13 @@ export default function ManualBookingForm({
 
   // ── Success ───────────────────────────────────────────────────────────────
 
+  // Personas ya asignadas en CaraCara (cualquier rol) — para filtrar dropdowns
+  const assignedCcMembers = new Set(
+    [...ccGuide.members, ...ccDriver.members, ...ccGuideDriver.members].filter(Boolean)
+  );
+  // Vans ya asignadas en CaraCara
+  const assignedCcVans = new Set(ccVan.vanIds.filter(Boolean));
+
   if (success) {
     return (
       <div className="bg-teal/5 border border-teal/20 rounded-2xl p-8 text-center flex flex-col items-center gap-4 max-w-md">
@@ -1329,7 +1336,7 @@ export default function ManualBookingForm({
                       <Field label={ccGuide.members.length > 1 ? `Persona ${i + 1}` : 'Persona del equipo'}>
                         <select value={m} onChange={e => setCcGuide(s => ({ ...s, members: s.members.map((x, j) => j === i ? e.target.value : x) }))} className={selectClass}>
                           <option value="">— Sin asignar —</option>
-                          {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          {guides.filter(g => !assignedCcMembers.has(g.id) || g.id === m).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
                       </Field>
                       <Field label="Honorario bruto (CLP)">
@@ -1360,7 +1367,7 @@ export default function ManualBookingForm({
                       <Field label={ccDriver.members.length > 1 ? `Persona ${i + 1}` : 'Persona del equipo'}>
                         <select value={m} onChange={e => setCcDriver(s => ({ ...s, members: s.members.map((x, j) => j === i ? e.target.value : x) }))} className={selectClass}>
                           <option value="">— Sin asignar —</option>
-                          {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          {guides.filter(g => !assignedCcMembers.has(g.id) || g.id === m).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
                       </Field>
                       <Field label="Honorario bruto (CLP)">
@@ -1391,7 +1398,7 @@ export default function ManualBookingForm({
                       <Field label={ccGuideDriver.members.length > 1 ? `Persona ${i + 1}` : 'Persona del equipo'}>
                         <select value={m} onChange={e => setCcGuideDriver(s => ({ ...s, members: s.members.map((x, j) => j === i ? e.target.value : x) }))} className={selectClass}>
                           <option value="">— Sin asignar —</option>
-                          {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          {guides.filter(g => !assignedCcMembers.has(g.id) || g.id === m).map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                         </select>
                       </Field>
                       <Field label="Honorario bruto (CLP)">
@@ -1421,7 +1428,7 @@ export default function ManualBookingForm({
                     <Field key={i} label={ccVan.vanIds.length > 1 ? `Vehículo ${i + 1}` : 'Vehículo'}>
                       <select value={vid} onChange={e => setCcVan(s => ({ vanIds: s.vanIds.map((x, j) => j === i ? e.target.value : x) }))} className={`${selectClass} max-w-sm`}>
                         <option value="">— Sin asignar —</option>
-                        {vans.map(v => <option key={v.id} value={v.id}>{v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)</option>)}
+                        {vans.filter(v => !assignedCcVans.has(v.id) || v.id === vid).map(v => <option key={v.id} value={v.id}>{v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)</option>)}
                       </select>
                     </Field>
                   ))}
