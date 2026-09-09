@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
 import type { BookingRow } from '@/app/admin/reservas/page';
+
+const BookingDetailModal = dynamic(() => import('./BookingDetailModal'), { ssr: false });
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   reserved:        { label: 'Reservado',  cls: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -23,7 +26,6 @@ function fmtCLP(n: number | null) {
 }
 
 function whatsappUrl(phone: string, name: string, code: string, tour: string, date: string): string {
-  // Dejar solo dígitos (wa.me no acepta el +)
   const digits = phone.replace(/\D/g, '');
   const dateStr = fmtDate(date);
   const msg = `Hola ${name} 👋, te escribimos de Turismo CaraCara sobre tu reserva *${code}* — *${tour}* el ${dateStr}. ¿Cómo podemos ayudarte?`;
@@ -31,9 +33,10 @@ function whatsappUrl(phone: string, name: string, code: string, tour: string, da
 }
 
 export default function ReservasTable({ initialBookings }: { initialBookings: BookingRow[] }) {
-  const [search, setSearch]           = useState('');
+  const [search, setSearch]             = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [typeFilter, setTypeFilter]   = useState('all');
+  const [typeFilter, setTypeFilter]     = useState('all');
+  const [selectedId, setSelectedId]     = useState<string | null>(null);
 
   const bookings = useMemo(() => {
     let list = initialBookings;
@@ -53,132 +56,142 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
   }, [initialBookings, search, statusFilter, typeFilter]);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-3">
-        <input
-          type="search"
-          placeholder="Buscar por código, nombre, email, teléfono, tour..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal flex-1 min-w-52 bg-white"
-        />
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal"
-        >
-          <option value="all">Todos los estados</option>
-          <option value="reserved">Reservado</option>
-          <option value="pending_payment">Pago pendiente</option>
-          <option value="waiting_min">En espera mínimo</option>
-          <option value="confirmed">Confirmada</option>
-          <option value="cancelled">Cancelada</option>
-          <option value="refunded">Devuelta</option>
-        </select>
-        <select
-          value={typeFilter}
-          onChange={e => setTypeFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal"
-        >
-          <option value="all">Privado y grupal</option>
-          <option value="private">Privado</option>
-          <option value="group">Grupal</option>
-        </select>
-        <span className="self-center text-sm text-gray-400">
-          {bookings.length} resultado{bookings.length !== 1 ? 's' : ''}
-        </span>
+    <>
+      <div className="flex flex-col gap-4">
+        {/* Filtros */}
+        <div className="flex flex-wrap gap-3">
+          <input
+            type="search"
+            placeholder="Buscar por código, nombre, email, teléfono, tour..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal flex-1 min-w-52 bg-white"
+          />
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal"
+          >
+            <option value="all">Todos los estados</option>
+            <option value="reserved">Reservado</option>
+            <option value="pending_payment">Pago pendiente</option>
+            <option value="waiting_min">En espera mínimo</option>
+            <option value="confirmed">Confirmada</option>
+            <option value="cancelled">Cancelada</option>
+            <option value="refunded">Devuelta</option>
+          </select>
+          <select
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal"
+          >
+            <option value="all">Privado y grupal</option>
+            <option value="private">Privado</option>
+            <option value="group">Grupal</option>
+          </select>
+          <span className="self-center text-sm text-gray-400">
+            {bookings.length} resultado{bookings.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {/* Tabla */}
+        <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+          {bookings.length === 0 ? (
+            <p className="text-sm text-gray-400 py-12 text-center">Sin resultados</p>
+          ) : (
+            <table className="w-full text-sm min-w-[900px]">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Código</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Cliente</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Tour</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Fecha tour</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-20">Tipo</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 w-12">Pax</th>
+                  <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 w-28">Monto</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Estado</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-24">Creada</th>
+                  <th className="w-10" />
+                </tr>
+              </thead>
+              <tbody>
+                {bookings.map((b, i) => (
+                  <tr
+                    key={b.id}
+                    onClick={() => setSelectedId(b.id)}
+                    className={`${i > 0 ? 'border-t border-gray-100' : ''} hover:bg-gray-50 transition-colors cursor-pointer`}
+                  >
+                    <td className="px-4 py-3 font-mono text-xs text-teal font-semibold">{b.booking_code}</td>
+                    <td className="px-4 py-3">
+                      {b.client_name ? (
+                        <div>
+                          <p className="text-gray-800 font-medium">{b.client_name}</p>
+                          <p className="text-gray-400 text-xs">{b.client_email}</p>
+                          {b.client_phone && (
+                            <p className="text-gray-400 text-xs">{b.client_phone}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700 max-w-[180px] truncate" title={b.tour_slug}>
+                      {b.tour_slug}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(b.tour_date)}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
+                        b.booking_type === 'private'
+                          ? 'bg-purple-50 text-purple-700 border-purple-200'
+                          : 'bg-blue-50 text-blue-700 border-blue-200'
+                      }`}>
+                        {b.booking_type === 'private' ? 'Privado' : 'Grupal'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-800 font-semibold">{b.pax}</td>
+                    <td className="px-4 py-3 text-right text-gray-700 font-medium whitespace-nowrap">
+                      {fmtCLP(b.total_amount)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={b.status} />
+                    </td>
+                    <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
+                      {new Date(b.created_at).toLocaleString('es-CL', {
+                        day: 'numeric', month: 'short',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </td>
+                    <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                      {b.client_phone && (
+                        <a
+                          href={whatsappUrl(
+                            b.client_phone,
+                            b.client_name ?? 'cliente',
+                            b.booking_code,
+                            b.tour_slug,
+                            b.tour_date,
+                          )}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`WhatsApp a ${b.client_name} (${b.client_phone})`}
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 transition-colors"
+                        >
+                          <WhatsAppIcon />
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
-      {/* Tabla */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
-        {bookings.length === 0 ? (
-          <p className="text-sm text-gray-400 py-12 text-center">Sin resultados</p>
-        ) : (
-          <table className="w-full text-sm min-w-[900px]">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Código</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Cliente</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500">Tour</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Fecha tour</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-20">Tipo</th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-gray-500 w-12">Pax</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 w-28">Monto</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-28">Estado</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 w-24">Creada</th>
-                <th className="w-10" />
-              </tr>
-            </thead>
-            <tbody>
-              {bookings.map((b, i) => (
-                <tr key={b.id} className={`${i > 0 ? 'border-t border-gray-100' : ''} hover:bg-gray-50/50 transition-colors`}>
-                  <td className="px-4 py-3 font-mono text-xs text-teal font-semibold">{b.booking_code}</td>
-                  <td className="px-4 py-3">
-                    {b.client_name ? (
-                      <div>
-                        <p className="text-gray-800 font-medium">{b.client_name}</p>
-                        <p className="text-gray-400 text-xs">{b.client_email}</p>
-                        {b.client_phone && (
-                          <p className="text-gray-400 text-xs">{b.client_phone}</p>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-700 max-w-[180px] truncate" title={b.tour_slug}>
-                    {b.tour_slug}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{fmtDate(b.tour_date)}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${
-                      b.booking_type === 'private'
-                        ? 'bg-purple-50 text-purple-700 border-purple-200'
-                        : 'bg-blue-50 text-blue-700 border-blue-200'
-                    }`}>
-                      {b.booking_type === 'private' ? 'Privado' : 'Grupal'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center text-gray-800 font-semibold">{b.pax}</td>
-                  <td className="px-4 py-3 text-right text-gray-700 font-medium whitespace-nowrap">
-                    {fmtCLP(b.total_amount)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={b.status} />
-                  </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
-                    {new Date(b.created_at).toLocaleString('es-CL', {
-                      day: 'numeric', month: 'short',
-                      hour: '2-digit', minute: '2-digit',
-                    })}
-                  </td>
-                  <td className="px-3 py-3">
-                    {b.client_phone && (
-                      <a
-                        href={whatsappUrl(
-                          b.client_phone,
-                          b.client_name ?? 'cliente',
-                          b.booking_code,
-                          b.tour_slug,
-                          b.tour_date,
-                        )}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={`WhatsApp a ${b.client_name} (${b.client_phone})`}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-50 hover:bg-green-100 text-green-600 transition-colors"
-                      >
-                        <WhatsAppIcon />
-                      </a>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
+      {selectedId && (
+        <BookingDetailModal bookingId={selectedId} onClose={() => setSelectedId(null)} />
+      )}
+    </>
   );
 }
 

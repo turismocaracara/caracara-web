@@ -3,6 +3,10 @@ import { requireAdmin, getCurrentTeamMember, hasPermission, isOpsViewer } from '
 import { supabase } from '@/lib/supabase';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 import ReservasTable from '@/components/admin/ReservasTable';
+import NewBookingButton from '@/components/admin/NewBookingButton';
+import type { AdminTourOption } from '@/components/admin/ManualBookingForm';
+import type { Agency } from '@/components/admin/AgencyRegistrationModal';
+import type { ServiceProvider } from '@/components/admin/ServiceProviderModal';
 
 export interface BookingRow {
   id: string;
@@ -27,12 +31,10 @@ export default async function ReservasPage({
 }) {
   const user   = await requireAdmin();
   const member = await getCurrentTeamMember();
-  // Lista completa de clientes con email/teléfono — no es "tour propio", así que
-  // los guías (sin permisos extra por defecto) no deben verla.
   if (!isOpsViewer(member)) redirect('/admin/asignaciones');
   const canCreateManual = hasPermission(member, 'manual_booking');
 
-  let query = supabase
+  let bookingsQuery = supabase
     .from('bookings')
     .select(`
       id, booking_code, booking_type, pax, status, total_amount, locale, created_at,
@@ -43,10 +45,30 @@ export default async function ReservasPage({
     .limit(200);
 
   if (searchParams.status && searchParams.status !== 'all') {
-    query = query.eq('status', searchParams.status);
+    bookingsQuery = bookingsQuery.eq('status', searchParams.status);
   }
 
-  const { data, error } = await query;
+  const [
+    { data, error },
+    activeToursRes,
+    agenciesRes,
+    guidesRes,
+    vansRes,
+    serviceProvidersRes,
+  ] = await Promise.all([
+    bookingsQuery,
+    supabase.from('tours').select('slug, name_es, has_picnic, duration_hours').eq('active', true).order('name_es'),
+    supabase.from('agencies').select('id, fantasy_name, rut, razon_social, giro, address, comuna, city, billing_email, phone, contact_name').order('fantasy_name'),
+    supabase.from('team_members').select('id, name, role').eq('active', true).order('name'),
+    supabase.from('vans').select('id, name, plate, capacity').eq('active', true).order('name'),
+    supabase.from('service_providers').select('id, name, type, phone, email, rut, notes').eq('active', true).order('name'),
+  ]);
+
+  const activeTours      = (activeToursRes.data      ?? []) as AdminTourOption[];
+  const agencies         = (agenciesRes.data          ?? []) as Agency[];
+  const guides           = (guidesRes.data            ?? []) as { id: string; name: string; role: string }[];
+  const vans             = (vansRes.data              ?? []) as { id: string; name: string; plate: string | null; capacity: number }[];
+  const serviceProviders = (serviceProvidersRes.data  ?? []) as ServiceProvider[];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: BookingRow[] = ((data ?? []) as unknown as Record<string, any>[]).map((b) => {
@@ -69,7 +91,6 @@ export default async function ReservasPage({
     };
   });
 
-  // Filtro por texto — lado servidor
   const q = (searchParams.q ?? '').toLowerCase();
   const filtered = q
     ? rows.filter(r =>
@@ -93,12 +114,13 @@ export default async function ReservasPage({
             </p>
           </div>
           {canCreateManual && (
-            <a
-              href="/admin/reservas/nueva"
-              className="bg-teal text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-teal/90 transition-colors"
-            >
-              + Nueva reserva
-            </a>
+            <NewBookingButton
+              tours={activeTours}
+              agencies={agencies}
+              guides={guides}
+              vans={vans}
+              serviceProviders={serviceProviders}
+            />
           )}
         </div>
 
