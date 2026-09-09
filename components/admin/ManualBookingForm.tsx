@@ -646,49 +646,6 @@ export default function ManualBookingForm({
               )}
             </div>
 
-            {/* Picnic + Duración */}
-            {selectedTour && (
-              <>
-                <hr className="border-gray-100" />
-                <div className="flex flex-col gap-3">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Detalles del tour</p>
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">¿Incluye picnic?</span>
-                        <Toggle value={hasPicnic} onChange={setHasPicnic} />
-                        <span className={`text-xs font-medium ${hasPicnic ? 'text-teal' : 'text-gray-400'}`}>
-                          {hasPicnic ? 'Sí' : 'No'}
-                        </span>
-                        <button type="button" onClick={() => setShowPicnicNotes(p => !p)}
-                          className="ml-auto text-[11px] text-teal hover:underline font-medium">
-                          {showPicnicNotes ? '− Ocultar detalles' : '+ Agregar detalles'}
-                        </button>
-                      </div>
-                      {showPicnicNotes && (
-                        <textarea value={picnicNotes} onChange={e => setPicnicNotes(e.target.value)} rows={2}
-                          placeholder="Menú, restricciones dietéticas, notas al guía…"
-                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">Duración</span>
-                      <input type="number" min={0.5} max={24} step={0.5} value={durationHours}
-                        onChange={e => setDurationHours(e.target.value)} placeholder="horas"
-                        className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-24" />
-                      {selectedTour.duration_hours != null && !durationHours && (
-                        <span className="text-xs text-gray-400">
-                          Último: {selectedTour.duration_hours}h
-                          <button type="button" className="ml-1 text-teal hover:underline"
-                            onClick={() => setDurationHours(String(selectedTour!.duration_hours))}>usar</button>
-                        </span>
-                      )}
-                      {durationHours && <span className="text-xs text-gray-400">Se actualizará el tour.</span>}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
           </div>
         )}
 
@@ -827,6 +784,47 @@ export default function ManualBookingForm({
         {step === 3 && (
           <div className="flex flex-col gap-5">
             <p className="text-xs text-gray-400">Información opcional — se puede completar después.</p>
+
+            {/* ── Detalles del tour ────────────────────────────────────────── */}
+            <div className="flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Detalles del tour</p>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">¿Incluye picnic?</span>
+                    <Toggle value={hasPicnic} onChange={setHasPicnic} />
+                    <span className={`text-xs font-medium ${hasPicnic ? 'text-teal' : 'text-gray-400'}`}>
+                      {hasPicnic ? 'Sí' : 'No'}
+                    </span>
+                    <button type="button" onClick={() => setShowPicnicNotes(p => !p)}
+                      className="ml-auto text-[11px] text-teal hover:underline font-medium">
+                      {showPicnicNotes ? '− Ocultar detalles' : '+ Agregar detalles'}
+                    </button>
+                  </div>
+                  {showPicnicNotes && (
+                    <textarea value={picnicNotes} onChange={e => setPicnicNotes(e.target.value)} rows={2}
+                      placeholder="Menú, restricciones dietéticas, notas al guía…"
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+                  )}
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-medium text-gray-600 w-28 flex-shrink-0">Duración</span>
+                  <input type="number" min={0.5} max={24} step={0.5} value={durationHours}
+                    onChange={e => setDurationHours(e.target.value)} placeholder="horas"
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-24" />
+                  {selectedTour?.duration_hours != null && !durationHours && (
+                    <span className="text-xs text-gray-400">
+                      Último: {selectedTour.duration_hours}h
+                      <button type="button" className="ml-1 text-teal hover:underline"
+                        onClick={() => setDurationHours(String(selectedTour!.duration_hours))}>usar</button>
+                    </span>
+                  )}
+                  {durationHours && <span className="text-xs text-gray-400">Se actualizará el tour.</span>}
+                </div>
+              </div>
+            </div>
+
+            <hr className="border-gray-100" />
 
             {/* Toggle CaraCara / Externalizado */}
             <div className="grid grid-cols-2 gap-2">
