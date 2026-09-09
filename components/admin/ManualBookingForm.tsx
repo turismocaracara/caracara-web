@@ -105,6 +105,43 @@ function PassengerLookup({ onSelect }: { onSelect: (c: ClientMatch) => void }) {
 export interface GuideOption { id: string; name: string; role: string; }
 export interface VanOption   { id: string; name: string; plate: string | null; capacity: number; }
 
+interface Participant {
+  key:              string;
+  source:           'internal' | 'external';
+  teamMemberId:     string;
+  selectedAgency:   Agency | null;
+  selectedProvider: ServiceProvider | null;
+  providerSearch:   string;
+  role:             string;
+  fee:              string;
+  scope:            string;
+  notes:            string;
+}
+
+function newParticipant(): Participant {
+  return {
+    key:              String(Date.now() + Math.random()),
+    source:           'internal',
+    teamMemberId:     '',
+    selectedAgency:   null,
+    selectedProvider: null,
+    providerSearch:   '',
+    role:             'guide_driver',
+    fee:              '',
+    scope:            '',
+    notes:            '',
+  };
+}
+
+const ROLES = [
+  { v: 'guide_driver', l: 'Guía-conductor'   },
+  { v: 'guide',        l: 'Guía'             },
+  { v: 'driver',       l: 'Conductor'         },
+  { v: 'co_guide',     l: 'Co-guía'          },
+  { v: 'support',      l: 'Apoyo logístico'  },
+  { v: 'other',        l: 'Otro'             },
+] as const;
+
 export interface AdminTourOption {
   slug:           string;
   name_es:        string;
@@ -628,21 +665,14 @@ export default function ManualBookingForm({
   const [tourLanguages, setTourLanguages] = useState<('es'|'en'|'pt')[]>(['es']);
 
   // ── Paso 3: Operaciones ───────────────────────────────────────────────────
-  const [outsourced,       setOutsourced]       = useState(false);
-  const [guideNotes,       setGuideNotes]       = useState('');
-  // CaraCara
-  const [guideId,          setGuideId]          = useState('');
-  const [vanId,            setVanId]            = useState('');
-  const [guideFee,         setGuideFee]         = useState('');
-  // Externo — dropdown unificado: agencias ya registradas + service_providers
-  const [providerList,     setProviderList]     = useState<ServiceProvider[]>(initialProviders);
-  const [providerSearch,   setProviderSearch]   = useState('');
-  // selectedOpAgency → agencia ya registrada; selectedProvider → proveedor nuevo
-  const [selectedOpAgency, setSelectedOpAgency] = useState<Agency | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<ServiceProvider | null>(null);
-  const [showProviderModal,setShowProviderModal]= useState(false);
-  const [providerFee,      setProviderFee]      = useState('');
-  const [providerScope,    setProviderScope]    = useState('');
+  const [participants,      setParticipants]      = useState<Participant[]>([newParticipant()]);
+  const [vanSource,         setVanSource]         = useState<'internal'|'external'>('internal');
+  const [vanId,             setVanId]             = useState('');
+  const [externalVanNotes,  setExternalVanNotes]  = useState('');
+  const [guideNotes,        setGuideNotes]        = useState('');
+  const [providerList,      setProviderList]      = useState<ServiceProvider[]>(initialProviders);
+  const [showProviderModal, setShowProviderModal] = useState(false);
+  const [activeProviderKey, setActiveProviderKey] = useState<string|null>(null);
 
   // ── Paso 4: Cobranza ──────────────────────────────────────────────────────
   const [totalAmount,   setTotalAmount]   = useState('');
@@ -827,18 +857,27 @@ export default function ManualBookingForm({
           agency_name:    isAgency && agencyName.trim() ? agencyName.trim() : undefined,
           agency_id:      agencyId ?? undefined,
           groups_count:   isAgency && bookingType==='group' ? groupsCount : undefined,
-          has_picnic:     hasPicnic,
-          duration_hours: durationHours ? Number(durationHours) : undefined,
-          picnic_notes:   picnicNotes || undefined,
-          guide_notes:    guideNotes     || undefined,
-          outsourced:     outsourced     || undefined,
-          guide_id:       guideId        || undefined,
-          van_id:         vanId          || undefined,
-          guide_fee:      guideFee       ? Number(guideFee)    : undefined,
-          op_agency_id:   selectedOpAgency?.id  || undefined,
-          op_provider_id: selectedProvider?.id  || undefined,
-          provider_fee:   providerFee ? Number(providerFee) : undefined,
-          provider_scope: providerScope  || undefined,
+          has_picnic:          hasPicnic,
+          duration_hours:      durationHours ? Number(durationHours) : undefined,
+          picnic_notes:        picnicNotes   || undefined,
+          guide_notes:         guideNotes    || undefined,
+          van_id:              vanSource === 'internal' && vanId ? vanId : undefined,
+          external_van_notes:  vanSource === 'external' && externalVanNotes ? externalVanNotes : undefined,
+          participants_ops: participants
+            .filter(p =>
+              (p.source === 'internal' && p.teamMemberId) ||
+              (p.source === 'external' && (p.selectedAgency || p.selectedProvider))
+            )
+            .map(p => ({
+              source:              p.source,
+              team_member_id:      p.source === 'internal' ? p.teamMemberId || undefined : undefined,
+              agency_id:           p.source === 'external' ? p.selectedAgency?.id || undefined : undefined,
+              service_provider_id: p.source === 'external' ? p.selectedProvider?.id || undefined : undefined,
+              role:                p.role  || undefined,
+              fee:                 p.fee   ? Number(p.fee) : undefined,
+              scope:               p.scope || undefined,
+              notes:               p.notes || undefined,
+            })),
           total_amount:     totalAmount ? Number(totalAmount) : undefined,
           price_per_person: pricePerPerson ?? undefined,
           payment_status:   paymentStatus  || undefined,
@@ -1245,143 +1284,202 @@ export default function ManualBookingForm({
 
             <hr className="border-gray-100" />
 
-            {/* Toggle CaraCara / Externalizado */}
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                { v:false, l:'Operado por CaraCara',   d:'Guía y vehículo propio' },
-                { v:true,  l:'Servicio externalizado', d:'Agencia o guía externo' },
-              ] as const).map(opt => (
-                <button key={String(opt.v)} type="button" onClick={() => setOutsourced(opt.v)}
-                  className={`flex flex-col gap-0.5 text-left border-2 rounded-xl px-4 py-3 transition-all ${
-                    outsourced === opt.v ? 'border-teal bg-teal/5 shadow-sm' : 'border-gray-200 hover:border-gray-300'
-                  }`}>
-                  <span className={`text-xs font-semibold ${outsourced===opt.v ? 'text-teal' : 'text-gray-600'}`}>{opt.l}</span>
-                  <span className="text-[11px] text-gray-400">{opt.d}</span>
-                </button>
-              ))}
+            {/* ── Equipo y operadores ───────────────────────────────────── */}
+            <div className="flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Equipo y operadores</p>
+
+              <div className="flex flex-col gap-3">
+                {participants.map((p, idx) => (
+                  <div key={p.key} className="border border-gray-200 rounded-xl p-4 flex flex-col gap-3 bg-gray-50/40">
+
+                    {/* Header tarjeta */}
+                    <div className="flex items-center gap-2">
+                      {/* Toggle interno / externo */}
+                      <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium flex-shrink-0">
+                        {(['internal','external'] as const).map(src => (
+                          <button key={src} type="button"
+                            onClick={() => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : {
+                              ...pp, source: src,
+                              teamMemberId: '', selectedAgency: null, selectedProvider: null, providerSearch: '',
+                            }))}
+                            className={`px-3 py-1.5 transition-colors ${
+                              p.source === src ? 'bg-teal text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                            }`}>
+                            {src === 'internal' ? 'CaraCara' : 'Externo'}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Rol */}
+                      <select value={p.role}
+                        onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, role: e.target.value }))}
+                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-teal bg-white flex-1 min-w-0">
+                        {ROLES.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}
+                      </select>
+                      {/* Eliminar */}
+                      {participants.length > 1 && (
+                        <button type="button"
+                          onClick={() => setParticipants(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 p-1">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Persona / proveedor */}
+                    {p.source === 'internal' ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <Field label="Persona del equipo">
+                          <select value={p.teamMemberId}
+                            onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, teamMemberId: e.target.value }))}
+                            className={selectClass}>
+                            <option value="">— Sin asignar —</option>
+                            {guides.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                          </select>
+                        </Field>
+                        <Field label="Honorario (CLP)">
+                          <input type="number" min={0} value={p.fee} placeholder="Ej: 45000"
+                            onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, fee: e.target.value }))}
+                            className={inputClass} />
+                        </Field>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        {/* Dropdown unificado agencias + providers */}
+                        <Field label="Agencia o proveedor externo">
+                          <div className="relative">
+                            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                            </svg>
+                            <input
+                              list={`op-provider-${p.key}`}
+                              value={p.providerSearch}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const matchAgency = agencyList.find(a => a.fantasy_name.toLowerCase() === val.trim().toLowerCase());
+                                const matchProv   = providerList.find(pr => pr.name.toLowerCase() === val.trim().toLowerCase());
+                                setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : {
+                                  ...pp,
+                                  providerSearch:   val,
+                                  selectedAgency:   matchAgency ?? null,
+                                  selectedProvider: matchProv   ?? null,
+                                }));
+                              }}
+                              placeholder="Buscar agencia o proveedor…"
+                              className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-teal w-full"
+                            />
+                            <datalist id={`op-provider-${p.key}`}>
+                              {agencyList.map(a  => <option key={`ag-${a.id}`}  value={a.fantasy_name} />)}
+                              {providerList.map(pr => <option key={`sp-${pr.id}`} value={pr.name} />)}
+                            </datalist>
+                          </div>
+                          {p.selectedAgency && (
+                            <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span>Agencia · <span className="font-medium">{p.selectedAgency.razon_social}</span></span>
+                            </div>
+                          )}
+                          {!p.selectedAgency && p.selectedProvider && (
+                            <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
+                              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span>
+                                {p.selectedProvider.type === 'guide' ? 'Guía externo' : 'Empresa / proveedor'}
+                                {p.selectedProvider.phone && ` · ${p.selectedProvider.phone}`}
+                              </span>
+                            </div>
+                          )}
+                          {!p.selectedAgency && !p.selectedProvider && p.providerSearch.trim().length >= 2 && (
+                            <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
+                              <p className="text-xs text-amber-700 flex-1">
+                                <span className="font-semibold">&ldquo;{p.providerSearch}&rdquo;</span> no está registrado.
+                              </p>
+                              <button type="button"
+                                onClick={() => { setActiveProviderKey(p.key); setShowProviderModal(true); }}
+                                className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">
+                                Registrar proveedor
+                              </button>
+                            </div>
+                          )}
+                        </Field>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <Field label="Monto del servicio (CLP)">
+                            <input type="number" min={0} value={p.fee} placeholder="Ej: 120000"
+                              onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, fee: e.target.value }))}
+                              className={inputClass} />
+                          </Field>
+                        </div>
+                        <Field label="¿Qué contempla?" hint="Transporte, guía, entradas, alimentación…">
+                          <textarea rows={2} value={p.scope} placeholder="Describe qué incluye el servicio…"
+                            onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, scope: e.target.value }))}
+                            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+                        </Field>
+                      </div>
+                    )}
+
+                    {/* Notas por participante */}
+                    <Field label="Notas">
+                      <input value={p.notes} placeholder="Instrucciones, puntos de encuentro, requerimientos…"
+                        onChange={e => setParticipants(prev => prev.map((pp, i) => i !== idx ? pp : { ...pp, notes: e.target.value }))}
+                        className={inputClass} />
+                    </Field>
+                  </div>
+                ))}
+              </div>
+
+              <button type="button"
+                onClick={() => setParticipants(prev => [...prev, newParticipant()])}
+                className="flex items-center gap-1.5 text-xs font-semibold text-teal hover:text-teal/80 transition-colors self-start">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Agregar participante
+              </button>
             </div>
 
-            {/* ── CaraCara ─────────────────────────────────────────────────── */}
-            {!outsourced && (
-              <div className="flex flex-col gap-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Guía / conductor">
-                    <select value={guideId} onChange={e => setGuideId(e.target.value)} className={selectClass}>
-                      <option value="">— Sin asignar —</option>
-                      {guides.map(g => (
-                        <option key={g.id} value={g.id}>{g.name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Vehículo">
-                    <select value={vanId} onChange={e => setVanId(e.target.value)} className={selectClass}>
-                      <option value="">— Sin asignar —</option>
-                      {vans.map(v => (
-                        <option key={v.id} value={v.id}>
-                          {v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
-                <Field label="Honorario al guía (CLP)" hint="Lo que se le paga al guía por este tour">
-                  <input type="number" min={0} value={guideFee} onChange={e => setGuideFee(e.target.value)}
-                    placeholder="Ej: 45000" className={`${inputClass} max-w-xs`} />
-                </Field>
-                <Field label="Notas al equipo">
-                  <textarea rows={3} value={guideNotes} onChange={e => setGuideNotes(e.target.value)}
-                    placeholder="Instrucciones de ruta, puntos de pickup en orden, necesidades especiales…"
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-                </Field>
+            <hr className="border-gray-100" />
+
+            {/* ── Vehículo ─────────────────────────────────────────────── */}
+            <div className="flex flex-col gap-3">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Vehículo</p>
+              <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs font-medium self-start">
+                {(['internal','external'] as const).map(src => (
+                  <button key={src} type="button" onClick={() => { setVanSource(src); setVanId(''); setExternalVanNotes(''); }}
+                    className={`px-4 py-2 transition-colors ${
+                      vanSource === src ? 'bg-teal text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                    }`}>
+                    {src === 'internal' ? 'Van CaraCara' : 'Vehículo externo'}
+                  </button>
+                ))}
               </div>
-            )}
+              {vanSource === 'internal' ? (
+                <select value={vanId} onChange={e => setVanId(e.target.value)} className={`${selectClass} max-w-sm`}>
+                  <option value="">— Sin asignar —</option>
+                  {vans.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}{v.plate ? ` · ${v.plate}` : ''} ({v.capacity} pax)
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input value={externalVanNotes} onChange={e => setExternalVanNotes(e.target.value)}
+                  placeholder="Descripción del vehículo, patente, empresa…"
+                  className={`${inputClass} max-w-sm`} />
+              )}
+            </div>
 
-            {/* ── Externalizado ─────────────────────────────────────────────── */}
-            {outsourced && (
-              <div className="flex flex-col gap-4">
-                {/* Proveedor — dropdown unificado: agencias + service_providers */}
-                <Field label="Proveedor del servicio" hint="Agencias registradas o guías / empresas externas">
-                  <div className="relative">
-                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-                    </svg>
-                    <input
-                      list="op-provider-suggestions"
-                      value={providerSearch}
-                      onChange={e => {
-                        const val = e.target.value;
-                        setProviderSearch(val);
-                        const matchAgency = agencyList.find(a => a.fantasy_name.toLowerCase() === val.trim().toLowerCase());
-                        const matchProv   = providerList.find(p => p.name.toLowerCase() === val.trim().toLowerCase());
-                        setSelectedOpAgency(matchAgency ?? null);
-                        setSelectedProvider(matchProv   ?? null);
-                      }}
-                      placeholder="Buscar agencia o proveedor…"
-                      className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-teal w-full"
-                    />
-                    <datalist id="op-provider-suggestions">
-                      {agencyList.map(a  => <option key={`ag-${a.id}`}  value={a.fantasy_name} />)}
-                      {providerList.map(p => <option key={`sp-${p.id}`} value={p.name} />)}
-                    </datalist>
-                  </div>
+            <hr className="border-gray-100" />
 
-                  {/* Match en agencias */}
-                  {selectedOpAgency && (
-                    <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
-                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>Agencia registrada · <span className="font-medium">{selectedOpAgency.razon_social}</span></span>
-                    </div>
-                  )}
-
-                  {/* Match en service_providers */}
-                  {!selectedOpAgency && selectedProvider && (
-                    <div className="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 mt-1">
-                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>
-                        {selectedProvider.type === 'guide' ? 'Guía externo' : 'Empresa / proveedor'}
-                        {selectedProvider.phone && ` · ${selectedProvider.phone}`}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Sin match → oferta de registro */}
-                  {!selectedOpAgency && !selectedProvider && providerSearch.trim().length >= 2 && (
-                    <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-1">
-                      <p className="text-xs text-amber-700 flex-1">
-                        <span className="font-semibold">&ldquo;{providerSearch}&rdquo;</span> no está registrado.
-                      </p>
-                      <button type="button" onClick={() => setShowProviderModal(true)}
-                        className="text-xs font-semibold text-teal hover:underline whitespace-nowrap">
-                        Registrar proveedor
-                      </button>
-                    </div>
-                  )}
-                </Field>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Field label="Valor del servicio (CLP)" hint="Lo que cobra el proveedor">
-                    <input type="number" min={0} value={providerFee} onChange={e => setProviderFee(e.target.value)}
-                      placeholder="Ej: 120000" className={inputClass} />
-                  </Field>
-                </div>
-
-                <Field label="¿Qué contempla el servicio?" hint="Transporte, guía, entradas, alimentación, etc.">
-                  <textarea rows={3} value={providerScope} onChange={e => setProviderScope(e.target.value)}
-                    placeholder="Describe qué incluye: traslado, guiado, entradas al parque, almuerzo…"
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-                </Field>
-
-                <Field label="Notas adicionales al proveedor">
-                  <textarea rows={2} value={guideNotes} onChange={e => setGuideNotes(e.target.value)}
-                    placeholder="Instrucciones especiales, puntos de encuentro, requerimientos del cliente…"
-                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
-                </Field>
-              </div>
-            )}
+            {/* ── Notas generales al equipo ──────────────────────────── */}
+            <Field label="Notas generales al equipo">
+              <textarea rows={3} value={guideNotes} onChange={e => setGuideNotes(e.target.value)}
+                placeholder="Instrucciones de ruta, orden de pickups, necesidades especiales del grupo…"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal resize-none w-full" />
+            </Field>
           </div>
         )}
 
@@ -1498,13 +1596,20 @@ export default function ManualBookingForm({
 
       {showProviderModal && (
         <ServiceProviderModal
-          initialName={providerSearch}
-          onClose={() => setShowProviderModal(false)}
+          initialName={participants.find(p => p.key === activeProviderKey)?.providerSearch ?? ''}
+          onClose={() => { setShowProviderModal(false); setActiveProviderKey(null); }}
           onSaved={provider => {
-            setProviderList(prev => [...prev, provider].sort((a,b) => a.name.localeCompare(b.name,'es')));
-            setSelectedProvider(provider);
-            setProviderSearch(provider.name);
+            setProviderList(prev => [...prev, provider].sort((a, b) => a.name.localeCompare(b.name, 'es')));
+            if (activeProviderKey) {
+              setParticipants(prev => prev.map(pp => pp.key !== activeProviderKey ? pp : {
+                ...pp,
+                selectedProvider: provider,
+                selectedAgency:   null,
+                providerSearch:   provider.name,
+              }));
+            }
             setShowProviderModal(false);
+            setActiveProviderKey(null);
           }}
         />
       )}
