@@ -18,11 +18,15 @@ export default async function PasajerosPage() {
     .limit(5000);
 
   // Deduplicar: mismo tipo+número de documento = misma persona.
+  // Normalizar el RUT quitando puntos para que "12345678-9" y "12.345.678-9" sean la misma clave.
   // Si no tiene número de documento, se mantiene como entrada única por id.
   const seen = new Map<string, PasajeroRow>();
   for (const p of (data ?? []) as PasajeroRow[]) {
+    const normalizedNum = p.id_type === 'rut'
+      ? (p.id_number ?? '').replace(/\./g, '').toUpperCase()
+      : (p.id_number ?? '').toUpperCase().trim();
     const key = (p.id_number && p.id_type)
-      ? `${p.id_type}:${p.id_number}`
+      ? `${p.id_type}:${normalizedNum}`
       : `_noid_:${p.id}`;
     if (!seen.has(key)) {
       seen.set(key, {

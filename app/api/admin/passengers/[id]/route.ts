@@ -119,6 +119,13 @@ export async function PATCH(
     return NextResponse.json({ error: 'Datos inválidos', details: parsed.error.flatten() }, { status: 422 });
   }
 
+  // Obtener el documento actual antes de actualizar (para cascada)
+  const { data: current } = await supabase
+    .from('passengers')
+    .select('id_type, id_number')
+    .eq('id', params.id)
+    .single();
+
   const { error: updateError } = await supabase
     .from('passengers')
     .update(parsed.data)
@@ -126,6 +133,20 @@ export async function PATCH(
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  // Si cambió el número o tipo de documento, actualizar el resto de filas
+  // del mismo pasajero (un mismo pasajero tiene una fila por reserva)
+  const newIdNumber = parsed.data.id_number;
+  const oldIdNumber = current?.id_number;
+  const oldIdType   = current?.id_type ?? parsed.data.id_type;
+  if (newIdNumber && oldIdNumber && newIdNumber !== oldIdNumber && oldIdType) {
+    await supabase
+      .from('passengers')
+      .update({ id_number: newIdNumber, ...(parsed.data.id_type ? { id_type: parsed.data.id_type } : {}) })
+      .eq('id_type', oldIdType)
+      .eq('id_number', oldIdNumber)
+      .neq('id', params.id);
   }
 
   // Devolver el pasajero actualizado (misma estructura que GET)
