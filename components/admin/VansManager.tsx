@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 
 const VanEditModal = dynamic(() => import('./VanEditModal'), { ssr: false });
@@ -36,6 +36,7 @@ interface VanDocument {
   issuer:        string | null;
   policy_number: string | null;
   notes:         string | null;
+  file_url:      string | null;
   updated_at:    string;
 }
 
@@ -44,6 +45,7 @@ interface OdometerEntry {
   km:          number;
   recorded_at: string;
   notes:       string | null;
+  file_url:    string | null;
 }
 
 interface MaintenanceRecord {
@@ -55,22 +57,25 @@ interface MaintenanceRecord {
   workshop:    string | null;
   km_at:       number | null;
   next_km:     number | null;
+  file_url:    string | null;
 }
 
 interface FuelRecord {
-  id:      string;
-  date:    string;
-  liters:  number | null;
-  cost:    number | null;
-  km_at:   number | null;
-  station: string | null;
+  id:       string;
+  date:     string;
+  liters:   number | null;
+  cost:     number | null;
+  km_at:    number | null;
+  station:  string | null;
+  file_url: string | null;
 }
 
 interface TagRecord {
-  id:    string;
-  month: string;
-  cost:  number;
-  notes: string | null;
+  id:       string;
+  month:    string;
+  cost:     number;
+  notes:    string | null;
+  file_url: string | null;
 }
 
 interface TourRecord {
@@ -127,6 +132,82 @@ function docStatus(expires: string | null): DocStatus {
   return 'ok';
 }
 
+// ─── Upload helper ────────────────────────────────────────────────────────────
+
+async function uploadVanDoc(file: File, vanId: string): Promise<string> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('van_id', vanId);
+  const res  = await fetch('/api/admin/vans/upload-document', { method: 'POST', body: form });
+  const data = await res.json() as { url?: string; error?: string };
+  if (!res.ok) throw new Error(data.error ?? 'Error al subir archivo');
+  return data.url!;
+}
+
+function isPdf(url: string) { return url.toLowerCase().includes('.pdf'); }
+
+function FileDocLink({ url }: { url: string }) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-xs text-teal hover:underline font-medium">
+      <span>{isPdf(url) ? '📄' : '🖼️'}</span> Ver
+    </a>
+  );
+}
+
+// ─── FileInput ────────────────────────────────────────────────────────────────
+
+function FileInput({
+  existingUrl,
+  pendingFile,
+  onChange,
+  required,
+}: {
+  existingUrl: string | null;
+  pendingFile: File | null;
+  onChange:    (f: File | null) => void;
+  required?:   boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs text-gray-500">
+        Documento adjunto{required && <span className="text-red-400 ml-0.5">*</span>}
+      </label>
+
+      {pendingFile ? (
+        <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+          <span className="text-green-700 text-xs flex-1 truncate">📎 {pendingFile.name}</span>
+          <button type="button" onClick={() => { onChange(null); if (ref.current) ref.current.value = ''; }}
+            className="text-gray-400 hover:text-red-500 leading-none text-base">✕</button>
+        </div>
+      ) : existingUrl ? (
+        <div className="flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-100 rounded-lg">
+          <FileDocLink url={existingUrl} />
+          <span className="text-gray-300 text-xs">·</span>
+          <button type="button" onClick={() => ref.current?.click()}
+            className="text-xs text-gray-400 hover:text-gray-700">
+            Reemplazar
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => ref.current?.click()}
+          className="flex items-center gap-2 px-3 py-2.5 border-2 border-dashed border-orange-300 text-orange-500 rounded-lg text-sm hover:bg-orange-50 transition-colors">
+          <span>📎</span>
+          {required ? 'Adjuntar documento (obligatorio)' : 'Adjuntar documento'}
+        </button>
+      )}
+
+      <input ref={ref} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp"
+        className="hidden"
+        onChange={e => onChange(e.target.files?.[0] ?? null)} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const DOC_LABELS: Record<string, string> = {
   revision_tecnica:    'Revisión Técnica',
   soap:                'SOAP',
@@ -170,11 +251,13 @@ function DocumentsPanel({
   docs:     VanDocument[];
   onUpdate: (docs: VanDocument[]) => void;
 }) {
-  const [editing, setEditing] = useState<string | null>(null);
+  const [editing,     setEditing]     = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [form, setForm] = useState<{
     expires_at: string; issuer: string; policy_number: string; notes: string;
   }>({ expires_at: '', issuer: '', policy_number: '', notes: '' });
   const [saving, setSaving] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
 
   function openEdit(type: string) {
     const existing = docs.find(d => d.type === type);
@@ -184,12 +267,23 @@ function DocumentsPanel({
       policy_number: existing?.policy_number ?? '',
       notes:         existing?.notes         ?? '',
     });
+    setPendingFile(null);
+    setUploadErr('');
     setEditing(type);
   }
 
   async function saveDoc(type: string) {
+    const existingDoc = docs.find(d => d.type === type);
+    if (!pendingFile && !existingDoc?.file_url) {
+      setUploadErr('Debes adjuntar el documento');
+      return;
+    }
     setSaving(true);
+    setUploadErr('');
     try {
+      let fileUrl: string | undefined;
+      if (pendingFile) fileUrl = await uploadVanDoc(pendingFile, vanId);
+
       const res = await fetch(`/api/admin/vans/${vanId}/documents`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -199,14 +293,17 @@ function DocumentsPanel({
           issuer:        form.issuer.trim() || null,
           policy_number: form.policy_number.trim() || null,
           notes:         form.notes.trim()  || null,
+          ...(fileUrl ? { file_url: fileUrl } : {}),
         }),
       });
       const saved = await res.json() as VanDocument;
       if (res.ok) {
-        const next = docs.filter(d => d.type !== type);
-        onUpdate([...next, saved]);
+        onUpdate([...docs.filter(d => d.type !== type), saved]);
         setEditing(null);
+        setPendingFile(null);
       }
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Error al subir archivo');
     } finally {
       setSaving(false);
     }
@@ -233,6 +330,9 @@ function DocumentsPanel({
                 <div className="flex items-center gap-2.5">
                   <DocStatusIcon status={status} />
                   <span className="text-sm text-gray-700">{DOC_LABELS[type]}</span>
+                  {doc?.file_url && (
+                    <span className="text-[10px] text-teal bg-teal/10 px-1.5 py-0.5 rounded">doc</span>
+                  )}
                 </div>
                 <div className="text-right">
                   {doc?.expires_at ? (
@@ -289,6 +389,13 @@ function DocumentsPanel({
                       placeholder="Opcional"
                       className={ic} />
                   </div>
+                  <FileInput
+                    existingUrl={docs.find(d => d.type === type)?.file_url ?? null}
+                    pendingFile={pendingFile}
+                    onChange={setPendingFile}
+                    required
+                  />
+                  {uploadErr && <p className="text-xs text-red-600">{uploadErr}</p>}
                   <div className="flex justify-end gap-2 pt-1">
                     <button type="button" onClick={() => setEditing(null)}
                       className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">
@@ -296,7 +403,7 @@ function DocumentsPanel({
                     </button>
                     <button type="button" onClick={() => saveDoc(type)} disabled={saving}
                       className="bg-teal text-white text-sm font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50">
-                      {saving ? 'Guardando…' : 'Guardar'}
+                      {saving ? 'Subiendo…' : 'Guardar'}
                     </button>
                   </div>
                 </div>
@@ -320,29 +427,35 @@ function OdometerPanel({
   entries:  OdometerEntry[];
   onUpdate: (entries: OdometerEntry[]) => void;
 }) {
-  const [showForm, setShowForm] = useState(false);
-  const [km,    setKm]    = useState('');
-  const [date,  setDate]  = useState(new Date().toISOString().slice(0, 10));
-  const [notes, setNotes] = useState('');
-  const [saving,   setSaving]   = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showForm,    setShowForm]    = useState(false);
+  const [km,          setKm]          = useState('');
+  const [date,        setDate]        = useState(new Date().toISOString().slice(0, 10));
+  const [notes,       setNotes]       = useState('');
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [saving,      setSaving]      = useState(false);
+  const [uploadErr,   setUploadErr]   = useState('');
+  const [deletingId,  setDeletingId]  = useState<string | null>(null);
 
   const latest = entries[0];
 
   async function add() {
     if (!km) return;
-    setSaving(true);
+    if (!pendingFile) { setUploadErr('Debes adjuntar la foto del odómetro'); return; }
+    setSaving(true); setUploadErr('');
     try {
+      const fileUrl = await uploadVanDoc(pendingFile, vanId);
       const res = await fetch(`/api/admin/vans/${vanId}/odometer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ km: Number(km), recorded_at: date, notes: notes || null }),
+        body: JSON.stringify({ km: Number(km), recorded_at: date, notes: notes || null, file_url: fileUrl }),
       });
       const saved = await res.json() as OdometerEntry;
       if (res.ok) {
         onUpdate([saved, ...entries]);
-        setKm(''); setNotes(''); setShowForm(false);
+        setKm(''); setNotes(''); setPendingFile(null); setShowForm(false);
       }
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Error al subir archivo');
     } finally {
       setSaving(false);
     }
@@ -400,14 +513,16 @@ function OdometerPanel({
               placeholder="Después de mantención, etc."
               className={ic} />
           </div>
+          <FileInput existingUrl={null} pendingFile={pendingFile} onChange={setPendingFile} required />
+          {uploadErr && <p className="text-xs text-red-600">{uploadErr}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setShowForm(false)}
+            <button type="button" onClick={() => { setShowForm(false); setPendingFile(null); setUploadErr(''); }}
               className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">
               Cancelar
             </button>
             <button type="button" onClick={add} disabled={saving || !km}
               className="bg-teal text-white text-sm font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50">
-              {saving ? 'Guardando…' : 'Registrar'}
+              {saving ? 'Subiendo…' : 'Registrar'}
             </button>
           </div>
         </div>
@@ -423,10 +538,13 @@ function OdometerPanel({
           {entries.map(e => (
             <div key={e.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-50 group">
               <div>
-                <span className="text-sm font-medium text-gray-700">
-                  {e.km.toLocaleString('es-CL')} km
-                </span>
-                <span className="text-xs text-gray-400 ml-2">{fmtDate(e.recorded_at)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-700">
+                    {e.km.toLocaleString('es-CL')} km
+                  </span>
+                  <span className="text-xs text-gray-400">{fmtDate(e.recorded_at)}</span>
+                  {e.file_url && <FileDocLink url={e.file_url} />}
+                </div>
                 {e.notes && <p className="text-xs text-gray-400">{e.notes}</p>}
               </div>
               <button type="button" onClick={() => remove(e.id)} disabled={deletingId === e.id}
@@ -451,17 +569,21 @@ const MAINT_TYPES = [
 function MaintenanceTab({
   vanId, records, onUpdate,
 }: { vanId: string; records: MaintenanceRecord[]; onUpdate: (r: MaintenanceRecord[]) => void }) {
-  const [showForm, setShowForm] = useState(false);
+  const [showForm,    setShowForm]    = useState(false);
   const [f, setF] = useState({
     date: new Date().toISOString().slice(0, 10),
     type: '', description: '', cost: '', workshop: '', km_at: '', next_km: '',
   });
-  const [saving, setSaving]   = useState(false);
-  const [delId,  setDelId]    = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [saving,      setSaving]      = useState(false);
+  const [uploadErr,   setUploadErr]   = useState('');
+  const [delId,       setDelId]       = useState<string | null>(null);
 
   async function add() {
-    setSaving(true);
+    if (!pendingFile) { setUploadErr('Debes adjuntar el comprobante de la mantención'); return; }
+    setSaving(true); setUploadErr('');
     try {
+      const fileUrl = await uploadVanDoc(pendingFile, vanId);
       const res = await fetch(`/api/admin/vans/${vanId}/maintenance`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -472,14 +594,17 @@ function MaintenanceTab({
           workshop:    f.workshop || undefined,
           km_at:       f.km_at   ? Number(f.km_at)   : undefined,
           next_km:     f.next_km ? Number(f.next_km) : undefined,
+          file_url:    fileUrl,
         }),
       });
       const saved = await res.json() as MaintenanceRecord;
       if (res.ok) {
         onUpdate([saved, ...records]);
         setF({ date: new Date().toISOString().slice(0, 10), type:'', description:'', cost:'', workshop:'', km_at:'', next_km:'' });
-        setShowForm(false);
+        setPendingFile(null); setShowForm(false);
       }
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Error al subir archivo');
     } finally { setSaving(false); }
   }
 
@@ -552,12 +677,14 @@ function MaintenanceTab({
                 className={ic} />
             </div>
           </div>
+          <FileInput existingUrl={null} pendingFile={pendingFile} onChange={setPendingFile} required />
+          {uploadErr && <p className="text-xs text-red-600">{uploadErr}</p>}
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={() => setShowForm(false)}
+            <button type="button" onClick={() => { setShowForm(false); setPendingFile(null); setUploadErr(''); }}
               className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">Cancelar</button>
             <button type="button" onClick={add} disabled={saving}
               className="bg-teal text-white text-sm font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50">
-              {saving ? 'Guardando…' : 'Registrar'}
+              {saving ? 'Subiendo…' : 'Registrar'}
             </button>
           </div>
         </div>
@@ -584,6 +711,7 @@ function MaintenanceTab({
                   {r.cost != null && (
                     <span className="text-xs text-gray-500">{fmtCLP(r.cost)}</span>
                   )}
+                  {r.file_url && <FileDocLink url={r.file_url} />}
                 </div>
                 {r.description && (
                   <p className="text-xs text-gray-500 mt-0.5">{r.description}</p>
@@ -611,36 +739,43 @@ function MaintenanceTab({
 function FuelTab({
   vanId, records, onUpdate,
 }: { vanId: string; records: FuelRecord[]; onUpdate: (r: FuelRecord[]) => void }) {
-  const [showForm, setShowForm] = useState(false);
+  const [showForm,    setShowForm]    = useState(false);
   const [f, setF] = useState({
     date: new Date().toISOString().slice(0, 10),
     liters: '', cost: '', km_at: '', station: '',
   });
-  const [saving, setSaving] = useState(false);
-  const [delId,  setDelId]  = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [saving,      setSaving]      = useState(false);
+  const [uploadErr,   setUploadErr]   = useState('');
+  const [delId,       setDelId]       = useState<string | null>(null);
 
   const totalLiters = records.reduce((s, r) => s + (r.liters ?? 0), 0);
   const totalCost   = records.reduce((s, r) => s + (r.cost   ?? 0), 0);
 
   async function add() {
-    setSaving(true);
+    if (!pendingFile) { setUploadErr('Debes adjuntar el comprobante de la carga'); return; }
+    setSaving(true); setUploadErr('');
     try {
+      const fileUrl = await uploadVanDoc(pendingFile, vanId);
       const res = await fetch(`/api/admin/vans/${vanId}/fuel`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date: f.date,
-          liters:  f.liters  ? Number(f.liters)  : undefined,
-          cost:    f.cost    ? Number(f.cost)    : undefined,
-          km_at:   f.km_at   ? Number(f.km_at)   : undefined,
-          station: f.station || undefined,
+          liters:   f.liters  ? Number(f.liters)  : undefined,
+          cost:     f.cost    ? Number(f.cost)    : undefined,
+          km_at:    f.km_at   ? Number(f.km_at)   : undefined,
+          station:  f.station || undefined,
+          file_url: fileUrl,
         }),
       });
       const saved = await res.json() as FuelRecord;
       if (res.ok) {
         onUpdate([saved, ...records]);
         setF({ date: new Date().toISOString().slice(0, 10), liters:'', cost:'', km_at:'', station:'' });
-        setShowForm(false);
+        setPendingFile(null); setShowForm(false);
       }
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Error al subir archivo');
     } finally { setSaving(false); }
   }
 
@@ -709,12 +844,14 @@ function FuelTab({
                 className={ic} />
             </div>
           </div>
+          <FileInput existingUrl={null} pendingFile={pendingFile} onChange={setPendingFile} required />
+          {uploadErr && <p className="text-xs text-red-600">{uploadErr}</p>}
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={() => setShowForm(false)}
+            <button type="button" onClick={() => { setShowForm(false); setPendingFile(null); setUploadErr(''); }}
               className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">Cancelar</button>
             <button type="button" onClick={add} disabled={saving}
               className="bg-teal text-white text-sm font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50">
-              {saving ? 'Guardando…' : 'Registrar'}
+              {saving ? 'Subiendo…' : 'Registrar'}
             </button>
           </div>
         </div>
@@ -741,6 +878,7 @@ function FuelTab({
                   {r.cost != null && (
                     <span className="text-xs text-gray-600">{fmtCLP(r.cost)}</span>
                   )}
+                  {r.file_url && <FileDocLink url={r.file_url} />}
                 </div>
                 <div className="flex gap-3 mt-0.5 text-xs text-gray-400 flex-wrap">
                   {r.station && <span>{r.station}</span>}
@@ -764,12 +902,14 @@ function FuelTab({
 function TagsTab({
   vanId, records, onUpdate,
 }: { vanId: string; records: TagRecord[]; onUpdate: (r: TagRecord[]) => void }) {
-  const [showForm, setShowForm] = useState(false);
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [cost,  setCost]  = useState('');
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [delId,  setDelId]  = useState<string | null>(null);
+  const [showForm,    setShowForm]    = useState(false);
+  const [month,       setMonth]       = useState(new Date().toISOString().slice(0, 7));
+  const [cost,        setCost]        = useState('');
+  const [notes,       setNotes]       = useState('');
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [saving,      setSaving]      = useState(false);
+  const [uploadErr,   setUploadErr]   = useState('');
+  const [delId,       setDelId]       = useState<string | null>(null);
 
   const totalYear = records
     .filter(r => r.month.startsWith(new Date().getFullYear().toString()))
@@ -777,14 +917,17 @@ function TagsTab({
 
   async function add() {
     if (!cost) return;
-    setSaving(true);
+    if (!pendingFile) { setUploadErr('Debes adjuntar el comprobante del tag'); return; }
+    setSaving(true); setUploadErr('');
     try {
+      const fileUrl = await uploadVanDoc(pendingFile, vanId);
       const res = await fetch(`/api/admin/vans/${vanId}/tags`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          month: month + '-01',
-          cost:  Number(cost),
-          notes: notes || undefined,
+          month:    month + '-01',
+          cost:     Number(cost),
+          notes:    notes || undefined,
+          file_url: fileUrl,
         }),
       });
       const saved = await res.json() as TagRecord;
@@ -795,8 +938,10 @@ function TagsTab({
         } else {
           onUpdate([saved, ...records]);
         }
-        setCost(''); setNotes(''); setShowForm(false);
+        setCost(''); setNotes(''); setPendingFile(null); setShowForm(false);
       }
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : 'Error al subir archivo');
     } finally { setSaving(false); }
   }
 
@@ -842,12 +987,14 @@ function TagsTab({
               placeholder="Ruta 68, autopista…"
               className={ic} />
           </div>
+          <FileInput existingUrl={null} pendingFile={pendingFile} onChange={setPendingFile} required />
+          {uploadErr && <p className="text-xs text-red-600">{uploadErr}</p>}
           <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={() => setShowForm(false)}
+            <button type="button" onClick={() => { setShowForm(false); setPendingFile(null); setUploadErr(''); }}
               className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">Cancelar</button>
             <button type="button" onClick={add} disabled={saving || !cost}
               className="bg-teal text-white text-sm font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50">
-              {saving ? 'Guardando…' : 'Registrar'}
+              {saving ? 'Subiendo…' : 'Registrar'}
             </button>
           </div>
         </div>
@@ -866,10 +1013,13 @@ function TagsTab({
             <div key={r.id}
               className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex items-center justify-between group">
               <div>
-                <span className="text-sm font-medium text-gray-700 capitalize">
-                  {fmtMonth(r.month)}
-                </span>
-                <span className="ml-3 text-sm text-gray-600">{fmtCLP(r.cost)}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-700 capitalize">
+                    {fmtMonth(r.month)}
+                  </span>
+                  <span className="text-sm text-gray-600">{fmtCLP(r.cost)}</span>
+                  {r.file_url && <FileDocLink url={r.file_url} />}
+                </div>
                 {r.notes && <p className="text-xs text-gray-400 mt-0.5">{r.notes}</p>}
               </div>
               <button type="button" onClick={() => remove(r.id)} disabled={delId === r.id}

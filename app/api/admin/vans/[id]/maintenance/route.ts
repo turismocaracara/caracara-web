@@ -11,6 +11,7 @@ const MaintSchema = z.object({
   workshop:    z.string().max(200).optional(),
   km_at:       z.number().int().min(0).optional(),
   next_km:     z.number().int().min(0).optional(),
+  file_url:    z.string().nullable().optional(),
 });
 
 const DeleteSchema = z.object({ id: z.string().uuid() });

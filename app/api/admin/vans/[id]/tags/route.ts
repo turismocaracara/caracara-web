@@ -4,9 +4,10 @@ import { getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 
 const TagSchema = z.object({
-  month: z.string(), // 'YYYY-MM-DD' primer día del mes
-  cost:  z.number().int().min(0),
-  notes: z.string().max(300).optional(),
+  month:    z.string(),
+  cost:     z.number().int().min(0),
+  notes:    z.string().max(300).optional(),
+  file_url: z.string().nullable().optional(),
 });
 
 const DeleteSchema = z.object({ id: z.string().uuid() });

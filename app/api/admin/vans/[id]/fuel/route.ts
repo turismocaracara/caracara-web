@@ -4,11 +4,12 @@ import { getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 
 const FuelSchema = z.object({
-  date:    z.string(),
-  liters:  z.number().min(0).max(9999).optional(),
-  cost:    z.number().int().min(0).optional(),
-  km_at:   z.number().int().min(0).optional(),
-  station: z.string().max(200).optional(),
+  date:     z.string(),
+  liters:   z.number().min(0).max(9999).optional(),
+  cost:     z.number().int().min(0).optional(),
+  km_at:    z.number().int().min(0).optional(),
+  station:  z.string().max(200).optional(),
+  file_url: z.string().nullable().optional(),
 });
 
 const DeleteSchema = z.object({ id: z.string().uuid() });

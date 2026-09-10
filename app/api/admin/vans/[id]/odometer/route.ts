@@ -7,6 +7,7 @@ const OdometerSchema = z.object({
   km:          z.number().int().min(0).max(9_999_999),
   recorded_at: z.string().optional(),
   notes:       z.string().max(300).nullable().optional(),
+  file_url:    z.string().nullable().optional(),
 });
 
 const DeleteSchema = z.object({ id: z.string().uuid() });
