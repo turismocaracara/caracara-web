@@ -1,13 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import TourEditForm, { type TourDetail, type ScheduleRow } from './TourEditForm';
+import TourEditForm, { type TourDetail } from './TourEditForm';
 
 interface ModalState {
-  tour: TourDetail | null;
-  schedules: ScheduleRow[];
+  tour:    TourDetail | null;
   loading: boolean;
-  error: string;
+  error:   string;
 }
 
 export default function TourEditModal({
@@ -20,24 +19,19 @@ export default function TourEditModal({
   onSaved: (slug: string, nameEs: string) => void;
 }) {
   const [state, setState] = useState<ModalState>({
-    tour:      null,
-    schedules: [],
-    loading:   slug !== null, // if editing, need to load; if new, no load
-    error:     '',
+    tour:    null,
+    loading: slug !== null,
+    error:   '',
   });
 
   const loadTour = useCallback(async () => {
     if (slug === null) return;
     setState(s => ({ ...s, loading: true, error: '' }));
     try {
-      const [tourRes, schedRes] = await Promise.all([
-        fetch(`/api/admin/tours/${slug}`),
-        fetch(`/api/admin/tour-schedules?slug=${slug}`),
-      ]);
-      if (!tourRes.ok) throw new Error('No se pudo cargar el tour');
-      const tour = await tourRes.json() as TourDetail;
-      const schedules = schedRes.ok ? (await schedRes.json() as ScheduleRow[]) : [];
-      setState({ tour, schedules, loading: false, error: '' });
+      const res = await fetch(`/api/admin/tours/${slug}`);
+      if (!res.ok) throw new Error('No se pudo cargar el tour');
+      const tour = await res.json() as TourDetail;
+      setState({ tour, loading: false, error: '' });
     } catch (err) {
       setState(s => ({
         ...s,
@@ -127,7 +121,6 @@ export default function TourEditModal({
           {!state.loading && !state.error && (
             <TourEditForm
               tour={state.tour}
-              initialSchedules={state.schedules}
               onSaved={handleSaved}
             />
           )}

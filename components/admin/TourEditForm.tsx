@@ -31,13 +31,6 @@ export interface TourDetail {
   active:          boolean;
 }
 
-export interface ScheduleRow {
-  id: string;
-  tour_slug: string;
-  season: 'summer' | 'winter';
-  pickup_time: string;
-}
-
 export interface KeyOption { key: string; label: string; }
 
 // All 67 predefined highlight keys with Spanish labels
@@ -528,11 +521,9 @@ function CustomItemInput({
 
 export default function TourEditForm({
   tour,
-  initialSchedules,
   onSaved,
 }: {
   tour: TourDetail | null;
-  initialSchedules: ScheduleRow[];
   onSaved?: (slug: string) => void;
 }) {
   const isNew = !tour;
@@ -562,11 +553,6 @@ export default function TourEditForm({
   const [saved, setSaved]   = useState(false);
   const [error, setError]   = useState('');
 
-  const [schedules, setSchedules] = useState<Record<'summer' | 'winter', string>>({
-    summer: initialSchedules.find(s => s.season === 'summer')?.pickup_time?.slice(0, 5) ?? '',
-    winter: initialSchedules.find(s => s.season === 'winter')?.pickup_time?.slice(0, 5) ?? '',
-  });
-  const [savingSchedule, setSavingSchedule] = useState<'summer' | 'winter' | null>(null);
   const [savedSlug, setSavedSlug] = useState(tour?.slug ?? '');
 
   function toggleKey(list: string[], setList: (v: string[]) => void, key: string) {
@@ -651,21 +637,6 @@ export default function TourEditForm({
       setError(err instanceof Error ? err.message : 'Error al guardar');
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function saveSchedule(season: 'summer' | 'winter') {
-    const slug = savedSlug || tour?.slug;
-    if (!slug) return;
-    setSavingSchedule(season);
-    try {
-      await fetch('/api/admin/tour-schedules', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ tour_slug: slug, season, pickup_time: schedules[season] }),
-      });
-    } finally {
-      setSavingSchedule(null);
     }
   }
 
@@ -980,38 +951,6 @@ export default function TourEditForm({
       {/* 7. Highlights */}
       <Section title="Puntos destacados" hint="Los primeros 3 se muestran en la tarjeta del catálogo">
         <HighlightAutocomplete selected={highlights} onChange={setHighlights} />
-      </Section>
-
-      {/* 8. Horario de llegada por temporada */}
-      <Section
-        title="Horario de llegada al primer punto"
-        hint="Hora a la que el grupo debe estar EN la primera parada (no es la hora de salida). Varía por temporada."
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {(['summer', 'winter'] as const).map(season => (
-            <Field key={season} label={season === 'summer' ? 'Verano (oct–mar)' : 'Invierno (abr–sep)'}>
-              <div className="flex items-center gap-2">
-                <input
-                  type="time"
-                  value={schedules[season]}
-                  onChange={e => setSchedules(prev => ({ ...prev, [season]: e.target.value }))}
-                  className={inputClass}
-                />
-                <button
-                  type="button"
-                  onClick={() => saveSchedule(season)}
-                  disabled={savingSchedule === season || (!savedSlug && !tour?.slug)}
-                  className="bg-teal text-white text-xs font-semibold px-3 py-2 rounded-lg hover:bg-teal/90 disabled:opacity-50 whitespace-nowrap"
-                >
-                  {savingSchedule === season ? '…' : 'Guardar'}
-                </button>
-              </div>
-            </Field>
-          ))}
-        </div>
-        {isNew && !savedSlug && (
-          <p className="text-xs text-gray-400">Guarda el tour primero para poder asignar horarios de temporada.</p>
-        )}
       </Section>
 
       {/* Save bar */}

@@ -80,12 +80,29 @@ export async function PATCH(
     return NextResponse.json({ error: 'Sin campos para actualizar' }, { status: 400 });
   }
 
+  // Capturar hora actual del primer punto antes de actualizar
+  const { data: currentTour } = await supabase
+    .from('tours')
+    .select('itinerary')
+    .eq('slug', params.slug)
+    .single();
+  const oldTime = (currentTour?.itinerary as Array<{ time?: string }> | null)?.[0]?.time ?? null;
+
   const { error } = await supabase
     .from('tours')
     .update(parsed.data)
     .eq('slug', params.slug);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Registrar en historial si la hora del primer punto cambió
+  const newTime = parsed.data.itinerary?.[0]?.time ?? null;
+  if (newTime && newTime !== oldTime) {
+    await supabase.from('tour_arrival_history').insert({
+      tour_slug:    params.slug,
+      arrival_time: newTime,
+    });
+  }
 
   for (const locale of ['es', 'en', 'pt']) {
     revalidatePath(`/${locale}/tours/${params.slug}`);
