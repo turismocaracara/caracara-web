@@ -5,10 +5,7 @@ import { useRouter } from 'next/navigation';
 import BookingCalendar from '@/components/BookingCalendar';
 import AgencyRegistrationModal, { type Agency } from './AgencyRegistrationModal';
 import ServiceProviderModal, { type ServiceProvider } from './ServiceProviderModal';
-import {
-  formatRut, validateRut, DocNumberInput,
-  DIAL_CODES, parsePhone, PhoneInput,
-} from './PassengerFields';
+import { DocNumberInput, PhoneInput } from './PassengerFields';
 
 interface ClientMatch {
   id:         string;
