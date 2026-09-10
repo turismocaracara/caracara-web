@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { DocNumberInput, PhoneInput, parsePhone } from './PassengerFields';
 
 interface HistoryEntry {
   booking_code: string;
@@ -240,8 +241,15 @@ export default function PasajeroDetailModal({
                   <Row label="Documento"
                     value={`${ID_TYPE[data.id_type ?? ''] ?? data.id_type ?? ''} ${data.id_number ?? ''}`.trim()} />
                 )}
-                <Row label="Email"      value={data.email} />
-                <Row label="Teléfono"   value={data.phone} />
+                <Row label="Email"    value={data.email} />
+                <Row label="Teléfono" value={
+                  data.phone
+                    ? (() => {
+                        const p = parsePhone(data.phone);
+                        return <span>{p.flag} {data.phone}</span>;
+                      })()
+                    : null
+                } />
                 <Row label="País"       value={data.country} />
                 <Row label="Nacimiento" value={fmtBirth(data.birth_date)} />
               </section>
@@ -330,7 +338,7 @@ export default function PasajeroDetailModal({
               </EditRow>
 
               <EditRow label="Tipo documento">
-                <select value={form.id_type} onChange={e => set('id_type', e.target.value)} className={inputCls}>
+                <select value={form.id_type} onChange={e => { set('id_type', e.target.value); set('id_number', ''); }} className={inputCls}>
                   <option value="">— Sin especificar —</option>
                   <option value="rut">RUT</option>
                   <option value="passport">Pasaporte</option>
@@ -338,8 +346,12 @@ export default function PasajeroDetailModal({
               </EditRow>
 
               <EditRow label="N° documento">
-                <input value={form.id_number} onChange={e => set('id_number', e.target.value)}
-                  className={inputCls} placeholder="Ej: 12.345.678-9" />
+                <DocNumberInput
+                  idType={(form.id_type as 'rut' | 'passport') || 'passport'}
+                  value={form.id_number}
+                  onChange={v => set('id_number', v)}
+                  className={inputCls}
+                />
               </EditRow>
 
               <EditRow label="Email">
@@ -348,8 +360,10 @@ export default function PasajeroDetailModal({
               </EditRow>
 
               <EditRow label="Teléfono">
-                <input value={form.phone} onChange={e => set('phone', e.target.value)}
-                  className={inputCls} placeholder="+56 9 1234 5678" />
+                <PhoneInput
+                  value={form.phone}
+                  onChange={v => set('phone', v)}
+                />
               </EditRow>
 
               <EditRow label="País">

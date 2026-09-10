@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import { parsePhone } from './PassengerFields';
 
 const PasajeroDetailModal = dynamic(() => import('./PasajeroDetailModal'), { ssr: false });
 
@@ -120,7 +121,10 @@ export default function PasajerosTable({
                       {r.email || <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
-                      {r.phone || <span className="text-gray-300">—</span>}
+                      {r.phone
+                        ? (() => { const p = parsePhone(r.phone); return <span>{p.flag} {r.phone}</span>; })()
+                        : <span className="text-gray-300">—</span>
+                      }
                     </td>
                     <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
                       {r.country || <span className="text-gray-300">—</span>}
