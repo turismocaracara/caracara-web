@@ -31,11 +31,12 @@ export function validateRut(rut: string): boolean {
 }
 
 export function DocNumberInput({
-  idType, value, onChange, required, className,
+  idType, value, onChange, onBlur, required, className,
 }: {
   idType:     'rut' | 'passport';
   value:      string;
   onChange:   (v: string) => void;
+  onBlur?:    React.FocusEventHandler<HTMLInputElement>;
   required?:  boolean;
   className?: string;
 }) {
@@ -61,6 +62,7 @@ export function DocNumberInput({
       <input
         value={value}
         onChange={handleChange}
+        onBlur={onBlur}
         placeholder={isRut ? '12.345.678-9' : 'AB1234567'}
         required={required}
         className={`${className ?? ''} ${borderCls} pr-8`}

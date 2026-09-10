@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import BookingCalendar from './BookingCalendar';
+import { DocNumberInput, PhoneInput } from '@/components/admin/PassengerFields';
 
 interface PriceTier {
   paxMin: number;
@@ -495,7 +496,10 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
                 <Input label={labels.idType} required>
                   <select
                     value={p.id_type}
-                    onChange={e => updatePassenger(i, 'id_type', e.target.value as 'rut' | 'passport')}
+                    onChange={e => {
+                      updatePassenger(i, 'id_type', e.target.value as 'rut' | 'passport');
+                      updatePassenger(i, 'id_number', '');
+                    }}
                     className={selectClass}
                   >
                     <option value="passport">{labels.passport}</option>
@@ -504,9 +508,10 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
                 </Input>
 
                 <Input label={labels.idNumber} required>
-                  <input
+                  <DocNumberInput
+                    idType={p.id_type}
                     value={p.id_number}
-                    onChange={e => updatePassenger(i, 'id_number', e.target.value)}
+                    onChange={v => updatePassenger(i, 'id_number', v)}
                     onBlur={i === 0 ? async e => {
                       const num = e.target.value.trim();
                       const minLen = p.id_type === 'rut' ? 8 : 5;
@@ -531,7 +536,6 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
                         })));
                       } catch { /* no interrumpir el flujo */ }
                     } : undefined}
-                    placeholder={p.id_type === 'rut' ? '12.345.678-9' : 'AA123456'}
                     className={inputClass}
                   />
                 </Input>
@@ -589,12 +593,10 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
                     </Input>
 
                     <Input label={labels.phone} required>
-                      <input
-                        type="tel"
+                      <PhoneInput
                         value={p.phone}
-                        onChange={e => updatePassenger(i, 'phone', e.target.value)}
-                        placeholder="+56 9 1234 5678"
-                        className={inputClass}
+                        onChange={v => updatePassenger(i, 'phone', v)}
+                        required
                       />
                     </Input>
                   </>
