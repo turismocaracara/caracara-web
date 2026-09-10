@@ -32,15 +32,13 @@ interface PasajeroDetail {
 }
 
 interface EditForm {
-  name:           string;
-  id_type:        string;
-  id_number:      string;
-  email:          string;
-  phone:          string;
-  country:        string;
-  birth_date:     string;
-  hotel_name:     string;
-  pickup_address: string;
+  name:       string;
+  id_type:    string;
+  id_number:  string;
+  email:      string;
+  phone:      string;
+  country:    string;
+  birth_date: string;
 }
 
 const ID_TYPE: Record<string, string> = { rut: 'RUT', passport: 'Pasaporte' };
@@ -131,15 +129,13 @@ export default function PasajeroDetailModal({
   function startEdit() {
     if (!data) return;
     setForm({
-      name:           data.name           ?? '',
-      id_type:        data.id_type        ?? 'rut',
-      id_number:      data.id_number      ?? '',
-      email:          data.email          ?? '',
-      phone:          data.phone          ?? '',
-      country:        data.country        ?? '',
-      birth_date:     data.birth_date     ?? '',
-      hotel_name:     data.hotel_name     ?? '',
-      pickup_address: data.pickup_address ?? '',
+      name:       data.name       ?? '',
+      id_type:    data.id_type    ?? 'rut',
+      id_number:  data.id_number  ?? '',
+      email:      data.email      ?? '',
+      phone:      data.phone      ?? '',
+      country:    data.country    ?? '',
+      birth_date: data.birth_date ?? '',
     });
     setSaveErr('');
     setEditing(true);
@@ -160,15 +156,13 @@ export default function PasajeroDetailModal({
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          name:           form.name           || undefined,
-          id_type:        form.id_type        || undefined,
-          id_number:      form.id_number      || undefined,
-          email:          form.email          || null,
-          phone:          form.phone          || null,
-          country:        form.country        || null,
-          birth_date:     form.birth_date     || null,
-          hotel_name:     form.hotel_name     || null,
-          pickup_address: form.pickup_address || null,
+          name:       form.name       || undefined,
+          id_type:    form.id_type    || undefined,
+          id_number:  form.id_number  || undefined,
+          email:      form.email      || null,
+          phone:      form.phone      || null,
+          country:    form.country    || null,
+          birth_date: form.birth_date || null,
         }),
       });
       if (!res.ok) {
@@ -366,16 +360,6 @@ export default function PasajeroDetailModal({
               <EditRow label="Nacimiento">
                 <input type="date" value={form.birth_date} onChange={e => set('birth_date', e.target.value)}
                   className={inputCls} />
-              </EditRow>
-
-              <EditRow label="Hospedaje">
-                <input value={form.hotel_name} onChange={e => set('hotel_name', e.target.value)}
-                  className={inputCls} placeholder="Hotel / dirección" />
-              </EditRow>
-
-              <EditRow label="Punto de pickup">
-                <input value={form.pickup_address} onChange={e => set('pickup_address', e.target.value)}
-                  className={inputCls} placeholder="Dirección de recogida" />
               </EditRow>
 
               {saveErr && (

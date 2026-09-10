@@ -55,7 +55,6 @@ export async function GET(
         tour_instances!tour_instance_id ( date, tours ( name_es ) )
       `)
       .eq('client_id', clientId)
-      .neq('status', 'cancelled')
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -96,15 +95,13 @@ export async function GET(
 }
 
 const PatchSchema = z.object({
-  name:           z.string().min(1).max(200).optional(),
-  id_type:        z.string().max(50).optional(),
-  id_number:      z.string().max(50).optional(),
-  email:          z.string().email().nullable().optional(),
-  phone:          z.string().max(50).nullable().optional(),
-  country:        z.string().max(100).nullable().optional(),
-  birth_date:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  hotel_name:     z.string().max(200).nullable().optional(),
-  pickup_address: z.string().max(300).nullable().optional(),
+  name:       z.string().min(1).max(200).optional(),
+  id_type:    z.string().max(50).optional(),
+  id_number:  z.string().max(50).optional(),
+  email:      z.string().email().nullable().optional(),
+  phone:      z.string().max(50).nullable().optional(),
+  country:    z.string().max(100).nullable().optional(),
+  birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 });
 
 export async function PATCH(
@@ -169,7 +166,6 @@ export async function PATCH(
         tour_instances!tour_instance_id ( date, tours ( name_es ) )
       `)
       .eq('client_id', clientId)
-      .neq('status', 'cancelled')
       .order('created_at', { ascending: false })
       .limit(50);
 

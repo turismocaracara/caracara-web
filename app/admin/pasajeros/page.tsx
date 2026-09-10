@@ -15,19 +15,30 @@ export default async function PasajerosPage() {
     .from('passengers')
     .select('id, name, id_type, id_number, email, phone, country, birth_date, is_lead')
     .order('created_at', { ascending: false })
-    .limit(2000);
+    .limit(5000);
 
-  const rows: PasajeroRow[] = ((data ?? []) as PasajeroRow[]).map(p => ({
-    id:         p.id,
-    name:       p.name,
-    id_type:    p.id_type,
-    id_number:  p.id_number,
-    email:      p.email     ?? null,
-    phone:      p.phone     ?? null,
-    country:    p.country   ?? null,
-    birth_date: p.birth_date ?? null,
-    is_lead:    !!p.is_lead,
-  }));
+  // Deduplicar: mismo tipo+número de documento = misma persona.
+  // Si no tiene número de documento, se mantiene como entrada única por id.
+  const seen = new Map<string, PasajeroRow>();
+  for (const p of (data ?? []) as PasajeroRow[]) {
+    const key = (p.id_number && p.id_type)
+      ? `${p.id_type}:${p.id_number}`
+      : `_noid_:${p.id}`;
+    if (!seen.has(key)) {
+      seen.set(key, {
+        id:         p.id,
+        name:       p.name,
+        id_type:    p.id_type,
+        id_number:  p.id_number,
+        email:      p.email      ?? null,
+        phone:      p.phone      ?? null,
+        country:    p.country    ?? null,
+        birth_date: p.birth_date ?? null,
+        is_lead:    !!p.is_lead,
+      });
+    }
+  }
+  const rows = Array.from(seen.values());
 
   return (
     <div className="flex min-h-screen">
