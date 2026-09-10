@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import dynamic from 'next/dynamic';
+
+const PasajeroDetailModal = dynamic(() => import('./PasajeroDetailModal'), { ssr: false });
 
 export interface PasajeroRow {
   id:             string;
@@ -43,8 +46,9 @@ function fmtBirth(iso: string | null) {
 }
 
 export default function PasajerosTable({ initialRows }: { initialRows: PasajeroRow[] }) {
-  const [search,    setSearch]    = useState('');
-  const [onlyLead,  setOnlyLead]  = useState(false);
+  const [search,     setSearch]     = useState('');
+  const [onlyLead,   setOnlyLead]   = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     let list = onlyLead ? initialRows.filter(r => r.is_lead) : initialRows;
@@ -64,6 +68,7 @@ export default function PasajerosTable({ initialRows }: { initialRows: PasajeroR
   }, [initialRows, search, onlyLead]);
 
   return (
+    <>
     <div className="flex flex-col gap-4">
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3">
@@ -112,7 +117,8 @@ export default function PasajerosTable({ initialRows }: { initialRows: PasajeroR
               {rows.map((r, i) => {
                 const s = STATUS_LABEL[r.booking_status];
                 return (
-                  <tr key={r.id} className={`${i > 0 ? 'border-t border-gray-100' : ''} hover:bg-gray-50/50 transition-colors`}>
+                  <tr key={r.id} onClick={() => setSelectedId(r.id)}
+                    className={`${i > 0 ? 'border-t border-gray-100' : ''} hover:bg-gray-50 transition-colors cursor-pointer`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <span className="text-gray-800 font-medium whitespace-nowrap">{r.name}</span>
@@ -145,7 +151,7 @@ export default function PasajerosTable({ initialRows }: { initialRows: PasajeroR
                     <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">
                       {fmtDate(r.tour_date)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <a
                         href={`/admin/reservas?q=${r.booking_code}`}
                         className="font-mono text-xs text-teal hover:underline whitespace-nowrap"
@@ -170,5 +176,10 @@ export default function PasajerosTable({ initialRows }: { initialRows: PasajeroR
         )}
       </div>
     </div>
+
+    {selectedId && (
+      <PasajeroDetailModal passengerId={selectedId} onClose={() => setSelectedId(null)} />
+    )}
+    </>
   );
 }
