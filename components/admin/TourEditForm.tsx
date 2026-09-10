@@ -554,6 +554,9 @@ export default function TourEditForm({
   const [itinerary, setItinerary]   = useState<ItineraryStop[]>(tour?.itinerary?.length ? tour.itinerary : []);
   const [images, setImages]         = useState<string[]>(tour?.images ?? []);
   const [newImageUrl, setNewImageUrl] = useState('');
+  const [uploading,   setUploading]   = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
@@ -578,6 +581,26 @@ export default function TourEditForm({
     const url = newImageUrl.trim();
     if (url && !images.includes(url)) setImages(prev => [...prev, url]);
     setNewImageUrl('');
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setUploading(true);
+    setUploadError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/admin/tours/upload-image', { method: 'POST', body: fd });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? 'Error al subir');
+      if (data.url) setImages(prev => [...prev, data.url!]);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Error al subir');
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function save() {
@@ -754,24 +777,55 @@ export default function TourEditForm({
               </button>
             </div>
           ))}
-          <div className="flex items-center gap-2 mt-1">
-            <input
-              type="url"
-              value={newImageUrl}
-              onChange={e => setNewImageUrl(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addImage())}
-              placeholder="https://... URL de imagen"
-              className={`${inputClass} flex-1`}
-            />
+
+          {/* Subir desde PC */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handleFileUpload}
+          />
+          <div className="flex flex-wrap items-center gap-2 mt-1">
             <button
               type="button"
-              onClick={addImage}
-              disabled={!newImageUrl.trim()}
-              className="text-xs text-teal disabled:opacity-40 hover:underline font-medium whitespace-nowrap px-2"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-1.5 text-sm border-2 border-dashed border-gray-300 rounded-lg px-4 py-2 text-gray-500 hover:border-teal hover:text-teal transition-colors disabled:opacity-50"
             >
-              + Agregar
+              {uploading ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+              )}
+              {uploading ? 'Subiendo…' : 'Subir desde el PC'}
             </button>
+            <span className="text-xs text-gray-300">o</span>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <input
+                type="url"
+                value={newImageUrl}
+                onChange={e => setNewImageUrl(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addImage())}
+                placeholder="https://... pegar URL"
+                className={`${inputClass} flex-1`}
+              />
+              <button
+                type="button"
+                onClick={addImage}
+                disabled={!newImageUrl.trim()}
+                className="text-xs text-teal disabled:opacity-40 hover:underline font-medium whitespace-nowrap px-2"
+              >
+                + Agregar
+              </button>
+            </div>
           </div>
+          {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
         </div>
       </Section>
 
