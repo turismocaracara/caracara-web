@@ -11,7 +11,7 @@ export default async function EquipoPage() {
 
   const { data, error } = await supabase
     .from('team_members')
-    .select('id, name, email, role, is_admin_secondary, is_guide, permissions, active, created_at')
+    .select('id, name, email, role, is_admin_secondary, is_guide, permissions, active, created_at, phone, emergency_name, emergency_phone, rut, birthdate, notes')
     .order('created_at');
 
   const members: TeamMemberRow[] = (data ?? []) as TeamMemberRow[];
@@ -19,7 +19,7 @@ export default async function EquipoPage() {
   return (
     <div className="flex min-h-screen">
       <AdminSidebar userEmail={user.email ?? ''} />
-      <main className="flex-1 ml-56 p-6 max-w-4xl">
+      <main className="flex-1 ml-56 p-6 max-w-5xl">
         <div className="mb-6">
           <h1 className="text-xl font-semibold text-gray-900">Equipo</h1>
           <p className="text-sm text-gray-500 mt-0.5">

@@ -17,6 +17,13 @@ export async function PATCH(
     is_guide?:           boolean;
     permissions?:        Record<string, boolean>;
     active?:             boolean;
+    // Perfil
+    phone?:              string | null;
+    emergency_name?:     string | null;
+    emergency_phone?:    string | null;
+    rut?:                string | null;
+    birthdate?:          string | null;
+    notes?:              string | null;
   };
 
   // Solo un admin puede otorgar el rol admin (o el permiso de admin secundario,
@@ -37,6 +44,12 @@ export async function PATCH(
   if (body.is_guide           !== undefined) update.is_guide           = body.is_guide;
   if (body.permissions        !== undefined) update.permissions        = body.permissions;
   if (body.active             !== undefined) update.active             = body.active;
+  if (body.phone              !== undefined) update.phone              = body.phone;
+  if (body.emergency_name     !== undefined) update.emergency_name     = body.emergency_name;
+  if (body.emergency_phone    !== undefined) update.emergency_phone    = body.emergency_phone;
+  if (body.rut                !== undefined) update.rut                = body.rut;
+  if (body.birthdate          !== undefined) update.birthdate          = body.birthdate;
+  if (body.notes              !== undefined) update.notes              = body.notes;
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'Nada que actualizar' }, { status: 400 });
