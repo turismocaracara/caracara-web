@@ -507,6 +507,30 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
                   <input
                     value={p.id_number}
                     onChange={e => updatePassenger(i, 'id_number', e.target.value)}
+                    onBlur={i === 0 ? async e => {
+                      const num = e.target.value.trim();
+                      const minLen = p.id_type === 'rut' ? 8 : 5;
+                      if (num.replace(/[^0-9kKa-zA-Z]/g, '').length < minLen) return;
+                      try {
+                        const res = await fetch(
+                          `/api/passenger-lookup?id_type=${p.id_type}&id_number=${encodeURIComponent(num)}`
+                        );
+                        if (!res.ok) return;
+                        const hit = await res.json() as {
+                          name?: string; email?: string; phone?: string;
+                          country?: string; birth_date?: string;
+                        };
+                        if (!hit.name) return;
+                        setPassengers(prev => prev.map((pp, idx) => idx !== 0 ? pp : ({
+                          ...pp,
+                          name:       pp.name       || hit.name       || '',
+                          email:      pp.email      || hit.email      || '',
+                          phone:      pp.phone      || hit.phone      || '',
+                          country:    pp.country    || hit.country    || '',
+                          birth_date: pp.birth_date || hit.birth_date || '',
+                        })));
+                      } catch { /* no interrumpir el flujo */ }
+                    } : undefined}
                     placeholder={p.id_type === 'rut' ? '12.345.678-9' : 'AA123456'}
                     className={inputClass}
                   />
@@ -544,17 +568,19 @@ export default function BookingForm({ tourName, tourSlug, groupPrice, privatePri
                           const email = e.target.value.trim();
                           if (!email.includes('@')) return;
                           try {
-                            const res = await fetch(`/api/clients?email=${encodeURIComponent(email)}`);
+                            const res = await fetch(`/api/passenger-lookup?email=${encodeURIComponent(email)}`);
                             if (!res.ok) return;
-                            const client = await res.json() as { name?: string; phone?: string; country?: string; id_type?: string; id_number?: string };
-                            if (client.name) setPassengers(prev => prev.map((p, idx) => idx === 0 ? {
-                              ...p,
-                              name:      p.name      || client.name      || '',
-                              phone:     p.phone     || client.phone     || '',
-                              country:   p.country   || client.country   || '',
-                              id_type:   p.id_type   || (client.id_type as 'rut' | 'passport') || 'passport',
-                              id_number: p.id_number || client.id_number || '',
-                            } : p));
+                            const hit = await res.json() as {
+                              name?: string; phone?: string; country?: string; birth_date?: string;
+                            };
+                            if (!hit.name) return;
+                            setPassengers(prev => prev.map((pp, idx) => idx !== 0 ? pp : ({
+                              ...pp,
+                              name:       pp.name       || hit.name       || '',
+                              phone:      pp.phone      || hit.phone      || '',
+                              country:    pp.country    || hit.country    || '',
+                              birth_date: pp.birth_date || hit.birth_date || '',
+                            })));
                           } catch { /* no interrumpir el flujo */ }
                         }}
                         placeholder="maria@email.com"
