@@ -58,16 +58,26 @@ interface MemberDocument {
 }
 
 interface PaymentItem {
-  id:          string;
-  member_id:   string;
-  type:        'tour' | 'servicio' | 'bono' | 'sueldo' | 'otro';
-  description: string;
-  amount:      number;
-  item_date:   string | null;
-  status:      'pendiente' | 'pagado';
-  paid_at:     string | null;
-  notes:       string | null;
-  created_at:  string;
+  id:               string;
+  member_id:        string;
+  type:             'tour' | 'servicio' | 'bono' | 'sueldo' | 'otro';
+  description:      string;
+  amount:           number;
+  item_date:        string | null;
+  status:           'pendiente' | 'pagado';
+  paid_at:          string | null;
+  notes:            string | null;
+  tour_instance_id: string | null;
+  created_at:       string;
+}
+
+interface TourPayment {
+  instance_id: string;
+  date:        string | null;
+  tour_name:   string;
+  role:        string;
+  tour_status: string;
+  payment:     PaymentItem | null;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -973,85 +983,173 @@ function FinancieroTab({
 
 // ─── Tab: Pagos ───────────────────────────────────────────────────────────────
 
+const ROLE_LABEL: Record<string, string> = { guide: 'Guía', driver: 'Conductor' };
+const ROLE_COLOR_MAP: Record<string, string> = {
+  guide:  'bg-teal/10 text-teal',
+  driver: 'bg-blue-50 text-blue-600',
+};
+
+function PaymentRow({
+  item,
+  processing,
+  onToggle,
+  onDelete,
+}: {
+  item:       PaymentItem;
+  processing: string | null;
+  onToggle:   (item: PaymentItem) => void;
+  onDelete:   (id: string) => void;
+}) {
+  return (
+    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
+      item.status === 'pagado' ? 'bg-green-50/40 border-green-100' : 'bg-white border-gray-100'
+    }`}>
+      <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium flex-shrink-0 ${TYPE_COLOR[item.type]}`}>
+        {TYPE_LABEL[item.type]}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium truncate ${item.status === 'pagado' ? 'text-gray-400' : 'text-gray-800'}`}>
+          {item.description}
+        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          {item.item_date && <span className="text-[11px] text-gray-400">{fmtDate(item.item_date)}</span>}
+          {item.paid_at && item.status === 'pagado' && (
+            <span className="text-[11px] text-green-500">· pagado {fmtDateShort(item.paid_at)}</span>
+          )}
+          {item.notes && <span className="text-[11px] text-gray-400 truncate">· {item.notes}</span>}
+        </div>
+      </div>
+      <span className={`text-sm font-semibold flex-shrink-0 ${item.status === 'pagado' ? 'text-gray-400' : 'text-gray-800'}`}>
+        {fmtCLP(item.amount)}
+      </span>
+      <span className={`text-[11px] font-medium flex-shrink-0 px-2 py-0.5 rounded-full ${
+        item.status === 'pagado' ? 'text-green-600 bg-green-100' : 'text-amber-600 bg-amber-50'
+      }`}>
+        {item.status === 'pagado' ? '✓ Pagado' : '● Pendiente'}
+      </span>
+      <div className="flex items-center gap-0.5 flex-shrink-0">
+        <button type="button" disabled={processing === item.id} onClick={() => onToggle(item)}
+          title={item.status === 'pendiente' ? 'Marcar como pagado' : 'Marcar como pendiente'}
+          className={`w-7 h-7 flex items-center justify-center rounded-lg text-sm transition-colors disabled:opacity-40 ${
+            item.status === 'pendiente' ? 'text-green-600 hover:bg-green-100' : 'text-gray-400 hover:bg-gray-100'
+          }`}>
+          {item.status === 'pendiente' ? '✓' : '↩'}
+        </button>
+        <button type="button" disabled={processing === item.id} onClick={() => onDelete(item.id)}
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors disabled:opacity-40 text-sm">
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PagosTab({ member }: { member: TeamMemberRow }) {
+  const [tours,      setTours]      = useState<TourPayment[]>([]);
   const [items,      setItems]      = useState<PaymentItem[]>([]);
   const [loading,    setLoading]    = useState(true);
-  const [filter,     setFilter]     = useState<'todos' | 'pendiente' | 'pagado'>('todos');
-  const [showAdd,    setShowAdd]    = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
-  const [addSaving,  setAddSaving]  = useState(false);
+  // Registrar pago de un tour
+  const [regId,     setRegId]     = useState<string | null>(null);
+  const [regAmount, setRegAmount] = useState('');
+  const [regNotes,  setRegNotes]  = useState('');
+  const [regSaving, setRegSaving] = useState(false);
+  // Agregar ítem manual
+  const [showAdd,   setShowAdd]   = useState(false);
+  const [addSaving, setAddSaving] = useState(false);
   const [addForm, setAddForm] = useState({
-    type:        'tour' as PaymentItem['type'],
-    description: '',
-    amount:      '',
-    item_date:   '',
-    notes:       '',
+    type: 'servicio' as PaymentItem['type'],
+    description: '', amount: '', item_date: '', notes: '',
   });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res  = await fetch(`/api/admin/team/${member.id}/payments`);
-      const data = await res.json() as { items: PaymentItem[] };
+      const data = await res.json() as { tours: TourPayment[]; items: PaymentItem[] };
+      setTours(data.tours ?? []);
       setItems(data.items ?? []);
     } finally { setLoading(false); }
   }, [member.id]);
 
   useEffect(() => { load(); }, [load]);
 
-  const totalAmount   = items.reduce((s, i) => s + i.amount, 0);
-  const paidAmount    = items.filter(i => i.status === 'pagado').reduce((s, i) => s + i.amount, 0);
+  // Totales combinados (solo pagos registrados)
+  const allPayments = [
+    ...tours.filter(t => t.payment).map(t => t.payment!),
+    ...items,
+  ];
+  const totalAmount   = allPayments.reduce((s, p) => s + p.amount, 0);
+  const paidAmount    = allPayments.filter(p => p.status === 'pagado').reduce((s, p) => s + p.amount, 0);
   const pendingAmount = totalAmount - paidAmount;
-  const pendingCount  = items.filter(i => i.status === 'pendiente').length;
+  const pendingCount  = allPayments.filter(p => p.status === 'pendiente').length;
 
-  const filtered = filter === 'todos' ? items : items.filter(i => i.status === filter);
-
-  async function toggleStatus(item: PaymentItem) {
+  async function togglePayment(item: PaymentItem) {
     setProcessing(item.id);
     try {
       const newStatus = item.status === 'pendiente' ? 'pagado' : 'pendiente';
       const res = await fetch(`/api/admin/team/${member.id}/payments`, {
-        method:  'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id:      item.id,
-          status:  newStatus,
-          paid_at: newStatus === 'pagado' ? new Date().toISOString() : null,
-        }),
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, status: newStatus, paid_at: newStatus === 'pagado' ? new Date().toISOString() : null }),
       });
       if (res.ok) {
         const now = new Date().toISOString();
-        setItems(prev => prev.map(i =>
-          i.id === item.id
-            ? { ...i, status: newStatus as PaymentItem['status'], paid_at: newStatus === 'pagado' ? now : null }
-            : i
-        ));
+        const patch = (i: PaymentItem) => i.id === item.id
+          ? { ...i, status: newStatus as PaymentItem['status'], paid_at: newStatus === 'pagado' ? now : null }
+          : i;
+        setItems(prev => prev.map(patch));
+        setTours(prev => prev.map(t => t.payment?.id === item.id ? { ...t, payment: patch(t.payment!) } : t));
       }
     } finally { setProcessing(null); }
   }
 
-  async function deleteItem(id: string) {
+  async function deletePayment(id: string) {
     if (!confirm('¿Eliminar este registro?')) return;
     setProcessing(id);
     try {
       const res = await fetch(`/api/admin/team/${member.id}/payments`, {
-        method:  'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
-      if (res.ok) setItems(prev => prev.filter(i => i.id !== id));
+      if (res.ok) {
+        setItems(prev => prev.filter(i => i.id !== id));
+        setTours(prev => prev.map(t => t.payment?.id === id ? { ...t, payment: null } : t));
+      }
     } finally { setProcessing(null); }
   }
 
   async function markAllPaid() {
-    if (!confirm(`¿Marcar ${pendingCount} ítem(s) pendiente(s) como pagado(s)?`)) return;
+    if (!confirm(`¿Marcar ${pendingCount} ítem(s) como pagado(s)?`)) return;
     const res = await fetch(`/api/admin/team/${member.id}/payments`, { method: 'PUT' });
     if (res.ok) {
       const now = new Date().toISOString();
-      setItems(prev => prev.map(i =>
-        i.status === 'pendiente' ? { ...i, status: 'pagado', paid_at: now } : i
-      ));
+      const paid = (p: PaymentItem) => p.status === 'pendiente' ? { ...p, status: 'pagado' as const, paid_at: now } : p;
+      setItems(prev => prev.map(paid));
+      setTours(prev => prev.map(t => t.payment ? { ...t, payment: paid(t.payment) } : t));
     }
+  }
+
+  async function registerTourPayment(tour: TourPayment) {
+    if (!regAmount) return;
+    setRegSaving(true);
+    try {
+      const res = await fetch(`/api/admin/team/${member.id}/payments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type:             'tour',
+          description:      tour.tour_name,
+          amount:           parseInt(regAmount),
+          item_date:        tour.date ?? null,
+          notes:            regNotes.trim() || null,
+          tour_instance_id: tour.instance_id,
+        }),
+      });
+      const data = await res.json() as PaymentItem;
+      if (res.ok) {
+        setTours(prev => prev.map(t => t.instance_id === tour.instance_id ? { ...t, payment: data } : t));
+        setRegId(null); setRegAmount(''); setRegNotes('');
+      }
+    } finally { setRegSaving(false); }
   }
 
   async function addItem() {
@@ -1059,8 +1157,7 @@ function PagosTab({ member }: { member: TeamMemberRow }) {
     setAddSaving(true);
     try {
       const res = await fetch(`/api/admin/team/${member.id}/payments`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type:        addForm.type,
           description: addForm.description.trim(),
@@ -1072,14 +1169,16 @@ function PagosTab({ member }: { member: TeamMemberRow }) {
       const data = await res.json() as PaymentItem;
       if (res.ok) {
         setItems(prev => [data, ...prev]);
-        setAddForm({ type: 'tour', description: '', amount: '', item_date: '', notes: '' });
+        setAddForm({ type: 'servicio', description: '', amount: '', item_date: '', notes: '' });
         setShowAdd(false);
       }
     } finally { setAddSaving(false); }
   }
 
+  if (loading) return <div className="text-center py-8 text-sm text-gray-400">Cargando…</div>;
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
 
       {/* ── Resumen ── */}
       <div className="grid grid-cols-3 gap-3">
@@ -1093,183 +1192,206 @@ function PagosTab({ member }: { member: TeamMemberRow }) {
         </div>
         <div className={`rounded-xl px-4 py-3 ${pendingAmount > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
           <p className={`text-[11px] mb-0.5 ${pendingAmount > 0 ? 'text-amber-600/80' : 'text-gray-400'}`}>Pendiente</p>
-          <p className={`text-base font-bold ${pendingAmount > 0 ? 'text-amber-700' : 'text-gray-400'}`}>
-            {fmtCLP(pendingAmount)}
-          </p>
+          <p className={`text-base font-bold ${pendingAmount > 0 ? 'text-amber-700' : 'text-gray-400'}`}>{fmtCLP(pendingAmount)}</p>
         </div>
       </div>
 
-      {/* ── Barra de acciones ── */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        {/* Filtros */}
-        <div className="flex gap-1.5">
-          {(['todos','pendiente','pagado'] as const).map(f => (
-            <button key={f} type="button" onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                filter === f
-                  ? 'bg-teal text-white border-teal'
-                  : 'border-gray-200 text-gray-500 hover:border-teal/40'
-              }`}>
-              {f === 'todos' ? 'Todos' : f === 'pendiente' ? 'Pendientes' : 'Pagados'}
-            </button>
-          ))}
+      {/* ── Pagar todos ── */}
+      {pendingCount > 0 && (
+        <div className="flex justify-end">
+          <button type="button" onClick={markAllPaid}
+            className="text-xs text-green-600 hover:text-green-700 font-medium px-3 py-1.5 border border-green-200 hover:border-green-300 rounded-lg transition-colors">
+            ✓ Pagar todos los pendientes ({pendingCount})
+          </button>
         </div>
-        {/* Acciones */}
-        <div className="flex gap-2">
-          {pendingCount > 0 && (
-            <button type="button" onClick={markAllPaid}
-              className="text-xs text-green-600 hover:text-green-700 font-medium px-3 py-1.5 border border-green-200 hover:border-green-300 rounded-lg transition-colors">
-              ✓ Pagar todos ({pendingCount})
-            </button>
-          )}
+      )}
+
+      {/* ══ SECCIÓN: Tours asignados ══════════════════════════════════════════ */}
+      <section>
+        <div className="flex items-center gap-2 mb-2">
+          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+            Tours asignados
+          </h4>
+          <span className="text-[11px] text-gray-300 font-normal">
+            {tours.length === 0 ? '· sin asignaciones' : `· ${tours.length} total`}
+          </span>
+        </div>
+
+        {tours.length === 0 ? (
+          <p className="text-sm text-gray-400 py-3 text-center bg-gray-50 rounded-xl">
+            Este miembro no tiene tours asignados todavía.
+            Asígnalos en la sección <span className="font-medium">Asignaciones</span>.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {tours.map(tour => (
+              <div key={tour.instance_id}>
+                <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
+                  tour.payment?.status === 'pagado'
+                    ? 'bg-green-50/40 border-green-100'
+                    : 'bg-white border-gray-100'
+                }`}>
+                  {/* Rol */}
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium flex-shrink-0 ${ROLE_COLOR_MAP[tour.role] ?? 'bg-gray-100 text-gray-500'}`}>
+                    {ROLE_LABEL[tour.role] ?? tour.role}
+                  </span>
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">{tour.tour_name}</p>
+                    {tour.date && <p className="text-[11px] text-gray-400">{fmtDate(tour.date)}</p>}
+                  </div>
+                  {/* Estado de pago */}
+                  {tour.payment ? (
+                    <>
+                      <span className={`text-sm font-semibold flex-shrink-0 ${tour.payment.status === 'pagado' ? 'text-gray-400' : 'text-gray-800'}`}>
+                        {fmtCLP(tour.payment.amount)}
+                      </span>
+                      <span className={`text-[11px] font-medium flex-shrink-0 px-2 py-0.5 rounded-full ${
+                        tour.payment.status === 'pagado' ? 'text-green-600 bg-green-100' : 'text-amber-600 bg-amber-50'
+                      }`}>
+                        {tour.payment.status === 'pagado' ? '✓ Pagado' : '● Pendiente'}
+                      </span>
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <button type="button" disabled={processing === tour.payment.id}
+                          onClick={() => togglePayment(tour.payment!)}
+                          title={tour.payment.status === 'pendiente' ? 'Marcar pagado' : 'Marcar pendiente'}
+                          className={`w-7 h-7 flex items-center justify-center rounded-lg text-sm transition-colors disabled:opacity-40 ${
+                            tour.payment.status === 'pendiente' ? 'text-green-600 hover:bg-green-100' : 'text-gray-400 hover:bg-gray-100'
+                          }`}>
+                          {tour.payment.status === 'pendiente' ? '✓' : '↩'}
+                        </button>
+                        <button type="button" disabled={processing === tour.payment.id}
+                          onClick={() => deletePayment(tour.payment!.id)}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors disabled:opacity-40 text-sm">
+                          ✕
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <button type="button"
+                      onClick={() => {
+                        setRegId(tour.instance_id);
+                        setRegAmount(member.honorarios_rate_per_tour?.toString() ?? '');
+                        setRegNotes('');
+                      }}
+                      className="text-xs text-teal font-medium px-3 py-1.5 border border-teal/30 hover:border-teal hover:bg-teal/5 rounded-lg transition-colors flex-shrink-0">
+                      + Registrar pago
+                    </button>
+                  )}
+                </div>
+
+                {/* Mini-form registrar pago */}
+                {regId === tour.instance_id && (
+                  <div className="mt-1.5 p-3 bg-gray-50 border border-gray-100 rounded-xl flex flex-col gap-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[11px] text-gray-500">Monto (CLP) *</label>
+                        <input type="number" min="1" value={regAmount}
+                          onChange={e => setRegAmount(e.target.value)}
+                          placeholder="35000" className={ic} autoFocus />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[11px] text-gray-500">Notas (opcional)</label>
+                        <input value={regNotes} onChange={e => setRegNotes(e.target.value)}
+                          placeholder="Observaciones…" className={ic} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" onClick={() => setRegId(null)}
+                        className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1.5">Cancelar</button>
+                      <button type="button" onClick={() => registerTourPayment(tour)}
+                        disabled={regSaving || !regAmount}
+                        className="bg-teal text-white text-xs font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50 hover:bg-teal/90">
+                        {regSaving ? 'Guardando…' : 'Guardar'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ══ SECCIÓN: Otros ítems (bonos, servicios, etc.) ════════════════════ */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+            Otros ítems
+          </h4>
           <button type="button" onClick={() => setShowAdd(s => !s)}
-            className={`text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
-              showAdd
-                ? 'bg-gray-100 text-gray-600 border-gray-200'
-                : 'bg-teal text-white border-teal hover:bg-teal/90'
+            className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+              showAdd ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-teal text-white border-teal hover:bg-teal/90'
             }`}>
             {showAdd ? 'Cancelar' : '+ Agregar'}
           </button>
         </div>
-      </div>
 
-      {/* ── Formulario agregar ── */}
-      {showAdd && (
-        <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl flex flex-col gap-3">
-          {/* Tipo */}
-          <div className="flex flex-wrap gap-1.5">
-            {(['tour','servicio','bono','sueldo','otro'] as const).map(t => (
-              <button key={t} type="button" onClick={() => setAddForm(f => ({ ...f, type: t }))}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                  addForm.type === t
-                    ? 'bg-teal text-white border-teal'
-                    : 'border-gray-200 text-gray-500 hover:border-teal/40'
-                }`}>
-                {TYPE_LABEL[t]}
+        {showAdd && (
+          <div className="mb-3 p-4 bg-gray-50 border border-gray-100 rounded-xl flex flex-col gap-3">
+            <div className="flex flex-wrap gap-1.5">
+              {(['servicio','bono','sueldo','otro'] as const).map(t => (
+                <button key={t} type="button" onClick={() => setAddForm(f => ({ ...f, type: t }))}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                    addForm.type === t ? 'bg-teal text-white border-teal' : 'border-gray-200 text-gray-500 hover:border-teal/40'
+                  }`}>
+                  {TYPE_LABEL[t]}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Descripción *</label>
+              <input value={addForm.description}
+                onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Ej: Bono puntualidad, Servicio extra…" className={ic} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">Monto (CLP) *</label>
+                <input type="number" min="1" value={addForm.amount}
+                  onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))}
+                  placeholder="10000" className={ic} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">Fecha</label>
+                <input type="date" value={addForm.item_date}
+                  onChange={e => setAddForm(f => ({ ...f, item_date: e.target.value }))}
+                  className={ic} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Notas (opcional)</label>
+              <input value={addForm.notes}
+                onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Detalles adicionales…" className={ic} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setShowAdd(false)}
+                className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">Cancelar</button>
+              <button type="button" onClick={addItem}
+                disabled={addSaving || !addForm.description.trim() || !addForm.amount}
+                className="bg-teal text-white text-sm font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50 hover:bg-teal/90">
+                {addSaving ? 'Guardando…' : 'Agregar'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {items.length === 0 ? (
+          <p className="text-sm text-gray-400 py-3 text-center bg-gray-50 rounded-xl">
+            Sin ítems manuales. Usa "+ Agregar" para bonos, servicios o sueldos.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {items.map(item => (
+              <PaymentRow key={item.id} item={item}
+                processing={processing}
+                onToggle={togglePayment}
+                onDelete={deletePayment} />
             ))}
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">
-              Descripción <span className="text-red-400">*</span>
-            </label>
-            <input value={addForm.description}
-              onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))}
-              placeholder="Ej: Tour Puyehue, Servicio de fotografía, Bono puntualidad…"
-              className={ic} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500">
-                Monto (CLP) <span className="text-red-400">*</span>
-              </label>
-              <input type="number" min="1" value={addForm.amount}
-                onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))}
-                placeholder="35000" className={ic} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-500">Fecha</label>
-              <input type="date" value={addForm.item_date}
-                onChange={e => setAddForm(f => ({ ...f, item_date: e.target.value }))}
-                className={ic} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">Notas <span className="text-gray-400 font-normal">(opcional)</span></label>
-            <input value={addForm.notes}
-              onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))}
-              placeholder="Detalles adicionales…" className={ic} />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setShowAdd(false)}
-              className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">Cancelar</button>
-            <button type="button" onClick={addItem}
-              disabled={addSaving || !addForm.description.trim() || !addForm.amount}
-              className="bg-teal text-white text-sm font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50 hover:bg-teal/90">
-              {addSaving ? 'Guardando…' : 'Agregar'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Lista de ítems ── */}
-      {loading ? (
-        <div className="text-center py-8 text-sm text-gray-400">Cargando…</div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-10 text-sm text-gray-400">
-          {filter === 'todos'
-            ? 'Sin registros de pagos. Usa "+ Agregar" para ingresar el primer ítem.'
-            : filter === 'pendiente'
-              ? 'No hay pagos pendientes.'
-              : 'No hay pagos registrados aún.'}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {filtered.map(item => (
-            <div key={item.id}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
-                item.status === 'pagado'
-                  ? 'bg-green-50/40 border-green-100'
-                  : 'bg-white border-gray-100'
-              }`}>
-              {/* Tipo */}
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium flex-shrink-0 ${TYPE_COLOR[item.type]}`}>
-                {TYPE_LABEL[item.type]}
-              </span>
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-medium truncate ${item.status === 'pagado' ? 'text-gray-400' : 'text-gray-800'}`}>
-                  {item.description}
-                </p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {item.item_date && (
-                    <span className="text-[11px] text-gray-400">{fmtDate(item.item_date)}</span>
-                  )}
-                  {item.paid_at && item.status === 'pagado' && (
-                    <span className="text-[11px] text-green-500">
-                      · pagado {fmtDateShort(item.paid_at)}
-                    </span>
-                  )}
-                  {item.notes && (
-                    <span className="text-[11px] text-gray-400 truncate">· {item.notes}</span>
-                  )}
-                </div>
-              </div>
-              {/* Monto */}
-              <span className={`text-sm font-semibold flex-shrink-0 ${item.status === 'pagado' ? 'text-gray-400' : 'text-gray-800'}`}>
-                {fmtCLP(item.amount)}
-              </span>
-              {/* Estado badge */}
-              <span className={`text-[11px] font-medium flex-shrink-0 px-2 py-0.5 rounded-full ${
-                item.status === 'pagado'
-                  ? 'text-green-600 bg-green-100'
-                  : 'text-amber-600 bg-amber-50'
-              }`}>
-                {item.status === 'pagado' ? '✓ Pagado' : '● Pendiente'}
-              </span>
-              {/* Acciones */}
-              <div className="flex items-center gap-0.5 flex-shrink-0">
-                <button type="button" disabled={processing === item.id}
-                  onClick={() => toggleStatus(item)}
-                  title={item.status === 'pendiente' ? 'Marcar como pagado' : 'Marcar como pendiente'}
-                  className={`w-7 h-7 flex items-center justify-center rounded-lg text-sm transition-colors disabled:opacity-40 ${
-                    item.status === 'pendiente'
-                      ? 'text-green-600 hover:bg-green-100'
-                      : 'text-gray-400 hover:bg-gray-100'
-                  }`}>
-                  {item.status === 'pendiente' ? '✓' : '↩'}
-                </button>
-                <button type="button" disabled={processing === item.id}
-                  onClick={() => deleteItem(item.id)}
-                  title="Eliminar"
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors disabled:opacity-40 text-sm">
-                  ✕
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+      </section>
     </div>
   );
 }

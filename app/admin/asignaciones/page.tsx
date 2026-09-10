@@ -43,7 +43,7 @@ export default async function AsignacionesPage() {
       : Promise.resolve({ data: [], error: null }),
     supabase
       .from('tour_assignments')
-      .select('tour_instance_id, team_member_id'),
+      .select('tour_instance_id, team_member_id, role_in_tour'),
   ]);
 
   interface RawPassenger {
@@ -130,9 +130,9 @@ export default async function AsignacionesPage() {
   id                uuid primary key default gen_random_uuid(),
   tour_instance_id  uuid not null references public.tour_instances(id) on delete cascade,
   team_member_id    uuid not null references public.team_members(id) on delete cascade,
-  role_in_tour      text not null default 'guide_driver' check (role_in_tour in ('guide', 'driver', 'guide_driver')),
+  role_in_tour      text not null default 'guide' check (role_in_tour in ('guide', 'driver')),
   created_at        timestamptz not null default now(),
-  unique (tour_instance_id)
+  unique (tour_instance_id, role_in_tour)
 );`}</pre>
           </div>
         ) : (
