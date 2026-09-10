@@ -914,12 +914,10 @@ function ToursTab({ records }: { records: TourRecord[] }) {
 
 function BlocksTab({
   van,
-  allVans,
   blocks,
   onUpdate,
 }: {
   van:     VanRow;
-  allVans: VanRow[];
   blocks:  VanBlockRow[];
   onUpdate:(blocks: VanBlockRow[]) => void;
 }) {
@@ -1020,13 +1018,11 @@ const TABS: { key: TabKey; label: string }[] = [
 
 function VanDetail({
   van,
-  allVans,
   blocks,
   onBlocksUpdate,
   onEdit,
 }: {
   van:            VanRow;
-  allVans:        VanRow[];
   blocks:         VanBlockRow[];
   onBlocksUpdate: (b: VanBlockRow[]) => void;
   onEdit:         () => void;
@@ -1151,7 +1147,6 @@ function VanDetail({
               {tab === 'blocks' && (
                 <BlocksTab
                   van={van}
-                  allVans={allVans}
                   blocks={blocks}
                   onUpdate={onBlocksUpdate}
                 />
@@ -1244,7 +1239,6 @@ export default function VansManager({
         <VanDetail
           key={selectedVan.id}
           van={selectedVan}
-          allVans={vansList}
           blocks={blocks}
           onBlocksUpdate={setBlocks}
           onEdit={() => setEditTarget(selectedVan)}
