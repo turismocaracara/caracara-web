@@ -91,16 +91,6 @@ export default async function ReservasPage({
     };
   });
 
-  const q = (searchParams.q ?? '').toLowerCase();
-  const filtered = q
-    ? rows.filter(r =>
-        r.booking_code.toLowerCase().includes(q) ||
-        (r.client_name  ?? '').toLowerCase().includes(q) ||
-        (r.client_email ?? '').toLowerCase().includes(q) ||
-        r.tour_slug.toLowerCase().includes(q)
-      )
-    : rows;
-
   return (
     <div className="flex min-h-screen">
       <AdminSidebar userEmail={user.email ?? ''} />
@@ -109,7 +99,7 @@ export default async function ReservasPage({
           <div>
             <h1 className="text-xl font-semibold text-gray-900">Reservas</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              {filtered.length} resultado{filtered.length !== 1 ? 's' : ''}
+              {rows.length} reserva{rows.length !== 1 ? 's' : ''}
               {error && <span className="ml-2 text-red-500">· Error: {error.message}</span>}
             </p>
           </div>
@@ -124,7 +114,7 @@ export default async function ReservasPage({
           )}
         </div>
 
-        <ReservasTable initialBookings={filtered} />
+        <ReservasTable initialBookings={rows} initialSearch={searchParams.q ?? ''} />
       </main>
     </div>
   );

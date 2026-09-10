@@ -32,8 +32,14 @@ function whatsappUrl(phone: string, name: string, code: string, tour: string, da
   return `https://wa.me/${digits}?text=${encodeURIComponent(msg)}`;
 }
 
-export default function ReservasTable({ initialBookings }: { initialBookings: BookingRow[] }) {
-  const [search, setSearch]             = useState('');
+export default function ReservasTable({
+  initialBookings,
+  initialSearch = '',
+}: {
+  initialBookings: BookingRow[];
+  initialSearch?:  string;
+}) {
+  const [search, setSearch]             = useState(initialSearch);
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter]     = useState('all');
   const [selectedId, setSelectedId]     = useState<string | null>(null);
@@ -60,13 +66,27 @@ export default function ReservasTable({ initialBookings }: { initialBookings: Bo
       <div className="flex flex-col gap-4">
         {/* Filtros */}
         <div className="flex flex-wrap gap-3">
-          <input
-            type="search"
-            placeholder="Buscar por código, nombre, email, teléfono, tour..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal flex-1 min-w-52 bg-white"
-          />
+          <div className="relative flex-1 min-w-52">
+            <input
+              type="search"
+              placeholder="Buscar por código, nombre, email, teléfono, tour..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-teal/30 focus:border-teal w-full bg-white"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                aria-label="Limpiar búsqueda"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
