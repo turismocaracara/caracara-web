@@ -57,6 +57,19 @@ interface MemberDocument {
   updated_at: string;
 }
 
+interface PaymentItem {
+  id:          string;
+  member_id:   string;
+  type:        'tour' | 'servicio' | 'bono' | 'sueldo' | 'otro';
+  description: string;
+  amount:      number;
+  item_date:   string | null;
+  status:      'pendiente' | 'pagado';
+  paid_at:     string | null;
+  notes:       string | null;
+  created_at:  string;
+}
+
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const PERMISSIONS = [
@@ -102,7 +115,22 @@ const ROLE_COLOR: Record<string, string> = {
 const ic = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full';
 const ic_sm = 'border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-teal w-full';
 
+const TYPE_LABEL: Record<string, string> = {
+  tour: 'Tour', servicio: 'Servicio', bono: 'Bono', sueldo: 'Sueldo', otro: 'Otro',
+};
+const TYPE_COLOR: Record<string, string> = {
+  tour:     'bg-teal/10 text-teal',
+  servicio: 'bg-blue-50 text-blue-600',
+  bono:     'bg-green-50 text-green-600',
+  sueldo:   'bg-purple-50 text-purple-600',
+  otro:     'bg-gray-100 text-gray-500',
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtCLP(n: number) {
+  return '$' + n.toLocaleString('es-CL');
+}
 
 function fmtDateShort(iso: string) {
   return new Date(iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -943,6 +971,309 @@ function FinancieroTab({
   );
 }
 
+// ─── Tab: Pagos ───────────────────────────────────────────────────────────────
+
+function PagosTab({ member }: { member: TeamMemberRow }) {
+  const [items,      setItems]      = useState<PaymentItem[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [filter,     setFilter]     = useState<'todos' | 'pendiente' | 'pagado'>('todos');
+  const [showAdd,    setShowAdd]    = useState(false);
+  const [processing, setProcessing] = useState<string | null>(null);
+  const [addSaving,  setAddSaving]  = useState(false);
+  const [addForm, setAddForm] = useState({
+    type:        'tour' as PaymentItem['type'],
+    description: '',
+    amount:      '',
+    item_date:   '',
+    notes:       '',
+  });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res  = await fetch(`/api/admin/team/${member.id}/payments`);
+      const data = await res.json() as { items: PaymentItem[] };
+      setItems(data.items ?? []);
+    } finally { setLoading(false); }
+  }, [member.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const totalAmount   = items.reduce((s, i) => s + i.amount, 0);
+  const paidAmount    = items.filter(i => i.status === 'pagado').reduce((s, i) => s + i.amount, 0);
+  const pendingAmount = totalAmount - paidAmount;
+  const pendingCount  = items.filter(i => i.status === 'pendiente').length;
+
+  const filtered = filter === 'todos' ? items : items.filter(i => i.status === filter);
+
+  async function toggleStatus(item: PaymentItem) {
+    setProcessing(item.id);
+    try {
+      const newStatus = item.status === 'pendiente' ? 'pagado' : 'pendiente';
+      const res = await fetch(`/api/admin/team/${member.id}/payments`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id:      item.id,
+          status:  newStatus,
+          paid_at: newStatus === 'pagado' ? new Date().toISOString() : null,
+        }),
+      });
+      if (res.ok) {
+        const now = new Date().toISOString();
+        setItems(prev => prev.map(i =>
+          i.id === item.id
+            ? { ...i, status: newStatus as PaymentItem['status'], paid_at: newStatus === 'pagado' ? now : null }
+            : i
+        ));
+      }
+    } finally { setProcessing(null); }
+  }
+
+  async function deleteItem(id: string) {
+    if (!confirm('¿Eliminar este registro?')) return;
+    setProcessing(id);
+    try {
+      const res = await fetch(`/api/admin/team/${member.id}/payments`, {
+        method:  'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) setItems(prev => prev.filter(i => i.id !== id));
+    } finally { setProcessing(null); }
+  }
+
+  async function markAllPaid() {
+    if (!confirm(`¿Marcar ${pendingCount} ítem(s) pendiente(s) como pagado(s)?`)) return;
+    const res = await fetch(`/api/admin/team/${member.id}/payments`, { method: 'PUT' });
+    if (res.ok) {
+      const now = new Date().toISOString();
+      setItems(prev => prev.map(i =>
+        i.status === 'pendiente' ? { ...i, status: 'pagado', paid_at: now } : i
+      ));
+    }
+  }
+
+  async function addItem() {
+    if (!addForm.description.trim() || !addForm.amount) return;
+    setAddSaving(true);
+    try {
+      const res = await fetch(`/api/admin/team/${member.id}/payments`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type:        addForm.type,
+          description: addForm.description.trim(),
+          amount:      parseInt(addForm.amount),
+          item_date:   addForm.item_date || null,
+          notes:       addForm.notes.trim() || null,
+        }),
+      });
+      const data = await res.json() as PaymentItem;
+      if (res.ok) {
+        setItems(prev => [data, ...prev]);
+        setAddForm({ type: 'tour', description: '', amount: '', item_date: '', notes: '' });
+        setShowAdd(false);
+      }
+    } finally { setAddSaving(false); }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+
+      {/* ── Resumen ── */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-gray-50 rounded-xl px-4 py-3">
+          <p className="text-[11px] text-gray-400 mb-0.5">Total acumulado</p>
+          <p className="text-base font-bold text-gray-900">{fmtCLP(totalAmount)}</p>
+        </div>
+        <div className="bg-green-50 rounded-xl px-4 py-3">
+          <p className="text-[11px] text-green-600/80 mb-0.5">Pagado</p>
+          <p className="text-base font-bold text-green-700">{fmtCLP(paidAmount)}</p>
+        </div>
+        <div className={`rounded-xl px-4 py-3 ${pendingAmount > 0 ? 'bg-amber-50' : 'bg-gray-50'}`}>
+          <p className={`text-[11px] mb-0.5 ${pendingAmount > 0 ? 'text-amber-600/80' : 'text-gray-400'}`}>Pendiente</p>
+          <p className={`text-base font-bold ${pendingAmount > 0 ? 'text-amber-700' : 'text-gray-400'}`}>
+            {fmtCLP(pendingAmount)}
+          </p>
+        </div>
+      </div>
+
+      {/* ── Barra de acciones ── */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        {/* Filtros */}
+        <div className="flex gap-1.5">
+          {(['todos','pendiente','pagado'] as const).map(f => (
+            <button key={f} type="button" onClick={() => setFilter(f)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                filter === f
+                  ? 'bg-teal text-white border-teal'
+                  : 'border-gray-200 text-gray-500 hover:border-teal/40'
+              }`}>
+              {f === 'todos' ? 'Todos' : f === 'pendiente' ? 'Pendientes' : 'Pagados'}
+            </button>
+          ))}
+        </div>
+        {/* Acciones */}
+        <div className="flex gap-2">
+          {pendingCount > 0 && (
+            <button type="button" onClick={markAllPaid}
+              className="text-xs text-green-600 hover:text-green-700 font-medium px-3 py-1.5 border border-green-200 hover:border-green-300 rounded-lg transition-colors">
+              ✓ Pagar todos ({pendingCount})
+            </button>
+          )}
+          <button type="button" onClick={() => setShowAdd(s => !s)}
+            className={`text-sm font-medium px-3 py-1.5 rounded-lg border transition-colors ${
+              showAdd
+                ? 'bg-gray-100 text-gray-600 border-gray-200'
+                : 'bg-teal text-white border-teal hover:bg-teal/90'
+            }`}>
+            {showAdd ? 'Cancelar' : '+ Agregar'}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Formulario agregar ── */}
+      {showAdd && (
+        <div className="p-4 bg-gray-50 border border-gray-100 rounded-xl flex flex-col gap-3">
+          {/* Tipo */}
+          <div className="flex flex-wrap gap-1.5">
+            {(['tour','servicio','bono','sueldo','otro'] as const).map(t => (
+              <button key={t} type="button" onClick={() => setAddForm(f => ({ ...f, type: t }))}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  addForm.type === t
+                    ? 'bg-teal text-white border-teal'
+                    : 'border-gray-200 text-gray-500 hover:border-teal/40'
+                }`}>
+                {TYPE_LABEL[t]}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">
+              Descripción <span className="text-red-400">*</span>
+            </label>
+            <input value={addForm.description}
+              onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Ej: Tour Puyehue, Servicio de fotografía, Bono puntualidad…"
+              className={ic} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">
+                Monto (CLP) <span className="text-red-400">*</span>
+              </label>
+              <input type="number" min="1" value={addForm.amount}
+                onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))}
+                placeholder="35000" className={ic} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Fecha</label>
+              <input type="date" value={addForm.item_date}
+                onChange={e => setAddForm(f => ({ ...f, item_date: e.target.value }))}
+                className={ic} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Notas <span className="text-gray-400 font-normal">(opcional)</span></label>
+            <input value={addForm.notes}
+              onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))}
+              placeholder="Detalles adicionales…" className={ic} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setShowAdd(false)}
+              className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">Cancelar</button>
+            <button type="button" onClick={addItem}
+              disabled={addSaving || !addForm.description.trim() || !addForm.amount}
+              className="bg-teal text-white text-sm font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50 hover:bg-teal/90">
+              {addSaving ? 'Guardando…' : 'Agregar'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Lista de ítems ── */}
+      {loading ? (
+        <div className="text-center py-8 text-sm text-gray-400">Cargando…</div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-10 text-sm text-gray-400">
+          {filter === 'todos'
+            ? 'Sin registros de pagos. Usa "+ Agregar" para ingresar el primer ítem.'
+            : filter === 'pendiente'
+              ? 'No hay pagos pendientes.'
+              : 'No hay pagos registrados aún.'}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {filtered.map(item => (
+            <div key={item.id}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-colors ${
+                item.status === 'pagado'
+                  ? 'bg-green-50/40 border-green-100'
+                  : 'bg-white border-gray-100'
+              }`}>
+              {/* Tipo */}
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium flex-shrink-0 ${TYPE_COLOR[item.type]}`}>
+                {TYPE_LABEL[item.type]}
+              </span>
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-medium truncate ${item.status === 'pagado' ? 'text-gray-400' : 'text-gray-800'}`}>
+                  {item.description}
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {item.item_date && (
+                    <span className="text-[11px] text-gray-400">{fmtDate(item.item_date)}</span>
+                  )}
+                  {item.paid_at && item.status === 'pagado' && (
+                    <span className="text-[11px] text-green-500">
+                      · pagado {fmtDateShort(item.paid_at)}
+                    </span>
+                  )}
+                  {item.notes && (
+                    <span className="text-[11px] text-gray-400 truncate">· {item.notes}</span>
+                  )}
+                </div>
+              </div>
+              {/* Monto */}
+              <span className={`text-sm font-semibold flex-shrink-0 ${item.status === 'pagado' ? 'text-gray-400' : 'text-gray-800'}`}>
+                {fmtCLP(item.amount)}
+              </span>
+              {/* Estado badge */}
+              <span className={`text-[11px] font-medium flex-shrink-0 px-2 py-0.5 rounded-full ${
+                item.status === 'pagado'
+                  ? 'text-green-600 bg-green-100'
+                  : 'text-amber-600 bg-amber-50'
+              }`}>
+                {item.status === 'pagado' ? '✓ Pagado' : '● Pendiente'}
+              </span>
+              {/* Acciones */}
+              <div className="flex items-center gap-0.5 flex-shrink-0">
+                <button type="button" disabled={processing === item.id}
+                  onClick={() => toggleStatus(item)}
+                  title={item.status === 'pendiente' ? 'Marcar como pagado' : 'Marcar como pendiente'}
+                  className={`w-7 h-7 flex items-center justify-center rounded-lg text-sm transition-colors disabled:opacity-40 ${
+                    item.status === 'pendiente'
+                      ? 'text-green-600 hover:bg-green-100'
+                      : 'text-gray-400 hover:bg-gray-100'
+                  }`}>
+                  {item.status === 'pendiente' ? '✓' : '↩'}
+                </button>
+                <button type="button" disabled={processing === item.id}
+                  onClick={() => deleteItem(item.id)}
+                  title="Eliminar"
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors disabled:opacity-40 text-sm">
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── DocumentsPanel ───────────────────────────────────────────────────────────
 
 function DocumentsPanel({
@@ -1060,7 +1391,7 @@ function DocumentsPanel({
 
 // ─── MemberDetail ─────────────────────────────────────────────────────────────
 
-type TabKey = 'datos' | 'antecedentes' | 'habilitaciones' | 'contrato' | 'financiero' | 'documentos';
+type TabKey = 'datos' | 'antecedentes' | 'habilitaciones' | 'contrato' | 'financiero' | 'pagos' | 'documentos';
 
 function MemberDetail({
   member, isCurrentUser, canViewFinancials, onUpdate, onDelete,
@@ -1088,8 +1419,8 @@ function MemberDetail({
 
   // Si el tab activo deja de estar disponible, volvemos a datos
   useEffect(() => {
-    if (tab === 'contrato' && member.employment_type === 'honorarios') setTab('datos');
-    if (tab === 'financiero' && !canViewFinancials) setTab('datos');
+    if (tab === 'contrato'   && member.employment_type === 'honorarios') setTab('datos');
+    if ((tab === 'financiero' || tab === 'pagos') && !canViewFinancials) setTab('datos');
   }, [member.employment_type, canViewFinancials, tab]);
 
   const isContrato   = member.employment_type !== 'honorarios';
@@ -1101,6 +1432,7 @@ function MemberDetail({
     { key: 'habilitaciones', label: 'Habilitaciones' },
     ...(isContrato       ? [{ key: 'contrato'   as TabKey, label: 'Info. de contrato' }] : []),
     ...(canViewFinancials ? [{ key: 'financiero' as TabKey, label: 'Financiero' }]        : []),
+    ...(canViewFinancials ? [{ key: 'pagos'      as TabKey, label: 'Pagos' }]             : []),
     { key: 'documentos',     label: 'Documentos' },
   ];
 
@@ -1170,6 +1502,9 @@ function MemberDetail({
             )}
             {tab === 'financiero' && canViewFinancials && (
               <FinancieroTab member={member} onUpdate={onUpdate} />
+            )}
+            {tab === 'pagos' && canViewFinancials && (
+              <PagosTab member={member} />
             )}
             {tab === 'documentos' && (
               <DocumentsPanel memberId={member.id} docs={docs} onUpdate={setDocs} />
