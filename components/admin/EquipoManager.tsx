@@ -46,6 +46,9 @@ export interface TeamMemberRow {
   bank_name:                string | null;
   bank_account_type:        string | null;
   bank_account_number:      string | null;
+  // Baja lógica
+  terminated_at:      string | null;
+  termination_reason: string | null;
 }
 
 interface MemberDocument {
@@ -390,6 +393,11 @@ function DatosPersonalesTab({
   const [active,           setActive]           = useState(member.active);
   const [savingRole,       setSavingRole]       = useState(false);
   const [deleting,         setDeleting]         = useState(false);
+  const [showTerminate,    setShowTerminate]    = useState(false);
+  const [terminateDate,    setTerminateDate]    = useState(new Date().toISOString().slice(0, 10));
+  const [terminateReason,  setTerminateReason]  = useState('');
+  const [terminating,      setTerminating]      = useState(false);
+  const [reactivating,     setReactivating]     = useState(false);
 
   useEffect(() => {
     setF({
@@ -455,11 +463,46 @@ function DatosPersonalesTab({
     } finally { setSavingRole(false); }
   }
 
+  async function terminate() {
+    setTerminating(true);
+    try {
+      const patch = {
+        terminated_at:      terminateDate ? new Date(terminateDate + 'T12:00:00').toISOString() : new Date().toISOString(),
+        termination_reason: terminateReason.trim() || null,
+        active:             false,
+      };
+      const res = await fetch(`/api/admin/team/${member.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) { onUpdate(patch); setShowTerminate(false); }
+    } finally { setTerminating(false); }
+  }
+
+  async function reactivate() {
+    setReactivating(true);
+    try {
+      const patch = { terminated_at: null, termination_reason: null, active: true };
+      const res = await fetch(`/api/admin/team/${member.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (res.ok) onUpdate(patch);
+    } finally { setReactivating(false); }
+  }
+
   async function remove() {
-    if (!confirm(`¿Eliminar a ${member.name} del equipo?`)) return;
+    if (!confirm(`¿Eliminar permanentemente a ${member.name}? Esta acción no se puede deshacer.`)) return;
     setDeleting(true);
-    await fetch(`/api/admin/team/${member.id}`, { method: 'DELETE' });
-    onDelete();
+    try {
+      const res = await fetch(`/api/admin/team/${member.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        onDelete();
+      } else {
+        const data = await res.json() as { error?: string };
+        alert(data.error ?? 'No se pudo eliminar');
+      }
+    } finally { setDeleting(false); }
   }
 
   const isHonorarios = f.employment_type === 'honorarios';
@@ -582,15 +625,60 @@ function DatosPersonalesTab({
           </div>
         )}
 
-        <div className="flex items-center gap-4">
-          {!isCurrentUser && <SaveBtn saving={savingRole} onClick={saveRole} />}
-          {!isCurrentUser && (
-            <button type="button" onClick={remove} disabled={deleting}
-              className="text-sm text-red-400 hover:text-red-600 disabled:opacity-40 ml-auto">
-              {deleting ? 'Eliminando…' : 'Eliminar del equipo'}
-            </button>
-          )}
-        </div>
+        {!isCurrentUser && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <SaveBtn saving={savingRole} onClick={saveRole} />
+              <div className="ml-auto flex items-center gap-3">
+                {member.terminated_at ? (
+                  <button type="button" onClick={reactivate} disabled={reactivating}
+                    className="text-sm text-green-600 hover:text-green-700 font-medium disabled:opacity-40">
+                    {reactivating ? 'Reactivando…' : '↺ Reactivar'}
+                  </button>
+                ) : (
+                  <button type="button" onClick={() => setShowTerminate(s => !s)}
+                    className="text-sm text-amber-600 hover:text-amber-700 font-medium">
+                    {showTerminate ? 'Cancelar' : 'Dar de baja'}
+                  </button>
+                )}
+                <button type="button" onClick={remove} disabled={deleting}
+                  title="Solo disponible si el miembro no tiene historial"
+                  className="text-sm text-red-400 hover:text-red-600 disabled:opacity-40">
+                  {deleting ? 'Eliminando…' : 'Eliminar'}
+                </button>
+              </div>
+            </div>
+
+            {showTerminate && (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex flex-col gap-3">
+                <p className="text-sm text-amber-800">
+                  El historial completo de <strong>{member.name}</strong> quedará archivado y accesible.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500">Fecha de término</label>
+                    <input type="date" value={terminateDate}
+                      onChange={e => setTerminateDate(e.target.value)} className={ic} />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500">Motivo (opcional)</label>
+                    <input value={terminateReason}
+                      onChange={e => setTerminateReason(e.target.value)}
+                      placeholder="Ej: Fin de temporada, renuncia…" className={ic} />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" onClick={() => setShowTerminate(false)}
+                    className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">Cancelar</button>
+                  <button type="button" onClick={terminate} disabled={terminating}
+                    className="bg-amber-600 text-white text-sm font-semibold px-4 py-1.5 rounded-lg disabled:opacity-50 hover:bg-amber-700">
+                    {terminating ? 'Guardando…' : 'Confirmar baja'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );
@@ -1560,20 +1648,44 @@ function MemberDetail({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Banner de baja */}
+      {member.terminated_at && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+          <span className="text-amber-500 text-lg flex-shrink-0">⚠</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800">
+              Dado de baja el {fmtDate(member.terminated_at.slice(0, 10))}
+            </p>
+            {member.termination_reason && (
+              <p className="text-xs text-amber-600 mt-0.5">{member.termination_reason}</p>
+            )}
+          </div>
+          <span className="text-[11px] text-amber-500 bg-amber-100 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
+            Historial archivado
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white rounded-xl border border-gray-100 px-5 py-4 flex items-center gap-4">
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold flex-shrink-0 ${avatarColor(member)}`}>
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold flex-shrink-0 ${member.terminated_at ? 'bg-gray-100 text-gray-400' : avatarColor(member)}`}>
           {member.name.charAt(0).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-lg font-bold text-gray-900">{member.name}</h2>
+            <h2 className={`text-lg font-bold ${member.terminated_at ? 'text-gray-400' : 'text-gray-900'}`}>{member.name}</h2>
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ROLE_COLOR[member.role] ?? 'bg-gray-100 text-gray-500'}`}>
               {roleLabel}
             </span>
-            <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${member.active ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-400'}`}>
-              {member.active ? '● Activo' : '○ Inactivo'}
-            </span>
+            {member.terminated_at ? (
+              <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-600">
+                ○ Dado de baja
+              </span>
+            ) : (
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${member.active ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-400'}`}>
+                {member.active ? '● Activo' : '○ Inactivo'}
+              </span>
+            )}
           </div>
           <p className="text-sm text-gray-400 mt-0.5">
             {member.email ?? '—'}
@@ -1695,6 +1807,7 @@ function InviteMemberModal({
         salary_base: null, has_bonus: null, bonus_description: null,
         honorarios_rate_per_tour: null,
         bank_name: null, bank_account_type: null, bank_account_number: null,
+        terminated_at: null, termination_reason: null,
       });
       onClose();
     } finally { setSaving(false); }
@@ -1756,9 +1869,12 @@ export default function EquipoManager({
   currentUserEmail:  string;
   canViewFinancials: boolean;
 }) {
-  const [members,    setMembers]    = useState<TeamMemberRow[]>(initialMembers);
-  const [selectedId, setSelectedId] = useState<string | null>(initialMembers[0]?.id ?? null);
-  const [showInvite, setShowInvite] = useState(false);
+  const [members,        setMembers]        = useState<TeamMemberRow[]>(initialMembers);
+  const [selectedId,     setSelectedId]     = useState<string | null>(
+    initialMembers.find(m => !m.terminated_at)?.id ?? initialMembers[0]?.id ?? null
+  );
+  const [showInvite,     setShowInvite]     = useState(false);
+  const [showTerminated, setShowTerminated] = useState(false);
 
   function rank(m: TeamMemberRow) {
     if (m.role === 'admin') return 0;
@@ -1766,7 +1882,9 @@ export default function EquipoManager({
     if (m.is_guide) return 2;
     return 3;
   }
-  const sorted = [...members].sort((a, b) => rank(a) - rank(b));
+  const activeMembers     = [...members].filter(m => !m.terminated_at).sort((a, b) => rank(a) - rank(b));
+  const terminatedMembers = [...members].filter(m =>  m.terminated_at).sort((a, b) => rank(a) - rank(b));
+  const sorted            = activeMembers;
 
   const selectedMember = members.find(m => m.id === selectedId) ?? null;
 
@@ -1790,7 +1908,7 @@ export default function EquipoManager({
   return (
     <div className="flex flex-col gap-6">
 
-      {/* ── Cards de miembros ── */}
+      {/* ── Cards de miembros activos ── */}
       <div className="flex items-center gap-3 flex-wrap">
         {sorted.map(m => (
           <button key={m.id} type="button" onClick={() => setSelectedId(m.id)}
@@ -1828,6 +1946,40 @@ export default function EquipoManager({
           <span className="text-xs font-medium">Invitar miembro</span>
         </button>
       </div>
+
+      {/* ── Toggle ex-miembros ── */}
+      {terminatedMembers.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <button type="button" onClick={() => setShowTerminated(s => !s)}
+            className="flex items-center gap-2 text-xs text-gray-400 hover:text-gray-600 font-medium w-fit transition-colors">
+            <span className={`transition-transform ${showTerminated ? 'rotate-90' : ''}`}>▸</span>
+            {showTerminated ? 'Ocultar' : 'Mostrar'} ex-miembros ({terminatedMembers.length})
+          </button>
+          {showTerminated && (
+            <div className="flex items-center gap-3 flex-wrap">
+              {terminatedMembers.map(m => (
+                <button key={m.id} type="button" onClick={() => setSelectedId(m.id)}
+                  className={`flex flex-col items-start px-4 py-3 rounded-xl border transition-all text-left min-w-[140px] opacity-60 ${
+                    selectedId === m.id
+                      ? 'border-amber-400 bg-amber-50 text-amber-800 shadow-sm opacity-100'
+                      : 'border-gray-200 bg-white text-gray-500 hover:border-amber-300 hover:bg-amber-50/40'
+                  }`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 bg-gray-100 text-gray-400">
+                      {m.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="font-semibold text-sm">{m.name.split(' ')[0]}</span>
+                  </div>
+                  <span className="text-[11px] text-gray-400">{roleBadgeLabel(m)}</span>
+                  <span className="text-[10px] font-medium mt-1 text-amber-500">
+                    ○ Dado de baja
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Detalle miembro seleccionado ── */}
       {selectedMember ? (

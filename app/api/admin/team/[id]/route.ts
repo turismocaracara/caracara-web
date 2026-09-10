@@ -18,6 +18,9 @@ export async function PATCH(
     is_guide?:           boolean;
     permissions?:        Record<string, boolean>;
     active?:             boolean;
+    // Baja lógica
+    terminated_at?:      string | null;
+    termination_reason?: string | null;
     // Perfil personal
     phone?:              string | null;
     emergency_name?:     string | null;
@@ -52,9 +55,7 @@ export async function PATCH(
     bank_account_number?:      string | null;
   };
 
-  // Solo un admin puede otorgar el rol admin (o el permiso de admin secundario,
-  // que abre la puerta a finanzas/clientes) a otra persona — evita que un
-  // admin_secondary con permiso manage_team se auto-promueva.
+  // Solo un admin puede otorgar el rol admin
   if (member?.role !== 'admin') {
     if (body.role === 'admin') {
       return NextResponse.json({ error: 'Solo un admin puede asignar el rol admin' }, { status: 403 });
@@ -71,6 +72,9 @@ export async function PATCH(
   if (body.is_guide           !== undefined) update.is_guide           = body.is_guide;
   if (body.permissions        !== undefined) update.permissions        = body.permissions;
   if (body.active             !== undefined) update.active             = body.active;
+  // Baja lógica
+  if (body.terminated_at      !== undefined) update.terminated_at      = body.terminated_at;
+  if (body.termination_reason !== undefined) update.termination_reason = body.termination_reason;
   // Perfil personal
   if (body.phone              !== undefined) update.phone              = body.phone;
   if (body.emergency_name     !== undefined) update.emergency_name     = body.emergency_name;
@@ -127,6 +131,21 @@ export async function DELETE(
   const member = await getCurrentTeamMember();
   if (!hasPermission(member, 'manage_team')) {
     return NextResponse.json({ error: 'No tienes permiso para gestionar el equipo' }, { status: 403 });
+  }
+
+  // Verificar si tiene historial antes de permitir eliminación permanente
+  const [{ count: docCount }, { count: payCount }, { count: asgCount }] = await Promise.all([
+    supabase.from('member_documents')   .select('*', { count: 'exact', head: true }).eq('member_id', params.id),
+    supabase.from('member_payment_items').select('*', { count: 'exact', head: true }).eq('member_id', params.id),
+    supabase.from('tour_assignments')   .select('*', { count: 'exact', head: true }).eq('team_member_id', params.id),
+  ]);
+
+  const total = (docCount ?? 0) + (payCount ?? 0) + (asgCount ?? 0);
+  if (total > 0) {
+    return NextResponse.json({
+      error: 'Este miembro tiene historial asociado. Usa "Dar de baja" para archivarlo.',
+      counts: { documents: docCount ?? 0, payments: payCount ?? 0, assignments: asgCount ?? 0 },
+    }, { status: 409 });
   }
 
   const { error } = await supabase

@@ -20,7 +20,8 @@ export default async function EquipoPage() {
       'employment_type, contract_type, contract_start, contract_end,' +
       'afp, health_insurance_type, health_insurance_name, honorarios_payment_type,' +
       'salary_base, has_bonus, bonus_description, honorarios_rate_per_tour,' +
-      'bank_name, bank_account_type, bank_account_number'
+      'bank_name, bank_account_type, bank_account_number,' +
+      'terminated_at, termination_reason'
     )
     .order('created_at');
 
