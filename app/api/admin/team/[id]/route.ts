@@ -12,6 +12,7 @@ export async function PATCH(
   }
 
   const body = await req.json() as {
+    name?:               string;
     role?:               string;
     is_admin_secondary?: boolean;
     is_guide?:           boolean;
@@ -31,6 +32,7 @@ export async function PATCH(
     // Habilitaciones
     languages?:          string[];
     license_class?:      string | null;
+    courses?:            string[];
     // Vínculo laboral
     employment_type?:    string;
     contract_type?:      string | null;
@@ -63,6 +65,7 @@ export async function PATCH(
   }
 
   const update: Record<string, unknown> = {};
+  if (body.name               !== undefined) update.name               = body.name;
   if (body.role               !== undefined) update.role               = body.role;
   if (body.is_admin_secondary !== undefined) update.is_admin_secondary = body.is_admin_secondary;
   if (body.is_guide           !== undefined) update.is_guide           = body.is_guide;
@@ -82,6 +85,7 @@ export async function PATCH(
   // Habilitaciones
   if (body.languages          !== undefined) update.languages          = body.languages;
   if (body.license_class      !== undefined) update.license_class      = body.license_class;
+  if (body.courses            !== undefined) update.courses            = body.courses;
   // Vínculo laboral
   if (body.employment_type    !== undefined) update.employment_type    = body.employment_type;
   if (body.contract_type      !== undefined) update.contract_type      = body.contract_type;

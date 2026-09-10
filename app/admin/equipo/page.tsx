@@ -16,7 +16,7 @@ export default async function EquipoPage() {
     .select(
       'id, name, email, role, is_admin_secondary, is_guide, permissions, active, created_at,' +
       'phone, emergency_name, emergency_phone, rut, birthdate, address, civil_status,' +
-      'blood_type, allergies, notes, languages, license_class,' +
+      'blood_type, allergies, notes, languages, license_class, courses,' +
       'employment_type, contract_type, contract_start, contract_end,' +
       'afp, health_insurance_type, health_insurance_name, honorarios_payment_type,' +
       'salary_base, has_bonus, bonus_description, honorarios_rate_per_tour,' +
