@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('tours')
-    .insert({ slug, name_es, active: true, has_picnic: false })
+    .insert({ slug, name_es, active: false, has_picnic: false })
     .select('slug, name_es, has_picnic, duration_hours')
     .single();
 
