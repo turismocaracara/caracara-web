@@ -758,16 +758,51 @@ export default function TourEditForm({
         <div className="flex flex-col gap-2">
           {images.map((img, i) => (
             <div key={i} className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 w-5 text-right flex-shrink-0">{i + 1}</span>
+              {/* Reorder arrows */}
+              <div className="flex flex-col flex-shrink-0">
+                <button
+                  type="button"
+                  disabled={i === 0}
+                  onClick={() => setImages(prev => {
+                    const next = [...prev];
+                    [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                    return next;
+                  })}
+                  className="text-gray-300 hover:text-gray-500 disabled:opacity-0 leading-none py-0.5 px-1"
+                  title="Subir"
+                >
+                  ▲
+                </button>
+                <button
+                  type="button"
+                  disabled={i === images.length - 1}
+                  onClick={() => setImages(prev => {
+                    const next = [...prev];
+                    [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                    return next;
+                  })}
+                  className="text-gray-300 hover:text-gray-500 disabled:opacity-0 leading-none py-0.5 px-1"
+                  title="Bajar"
+                >
+                  ▼
+                </button>
+              </div>
               <div className="w-10 h-10 flex-shrink-0 rounded overflow-hidden border border-gray-100 bg-gray-50">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={img} alt="" className="w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               </div>
-              <input
-                value={img}
-                onChange={e => setImages(prev => prev.map((x, idx) => idx === i ? e.target.value : x))}
-                className={`${inputClass} flex-1 text-xs`}
-              />
+              <div className="flex-1 min-w-0 flex flex-col gap-1">
+                {i === 0 && (
+                  <span className="self-start text-[10px] font-bold bg-teal text-white px-2 py-0.5 rounded-full">
+                    ★ Principal
+                  </span>
+                )}
+                <input
+                  value={img}
+                  onChange={e => setImages(prev => prev.map((x, idx) => idx === i ? e.target.value : x))}
+                  className={`${inputClass} text-xs`}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => setImages(prev => prev.filter((_, idx) => idx !== i))}

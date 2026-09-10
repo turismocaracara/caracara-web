@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
 import { getCurrentTeamMember } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 
@@ -85,5 +86,11 @@ export async function PATCH(
     .eq('slug', params.slug);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  for (const locale of ['es', 'en', 'pt']) {
+    revalidatePath(`/${locale}/tours/${params.slug}`);
+    revalidatePath(`/${locale}/tours`);
+  }
+
   return NextResponse.json({ ok: true });
 }
