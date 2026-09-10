@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { DocNumberInput, PhoneInput, parsePhone } from './PassengerFields';
 
 interface HistoryEntry {
@@ -98,6 +99,7 @@ export default function PasajeroDetailModal({
   canEdit?:    boolean;
   onClose:     () => void;
 }) {
+  const router                = useRouter();
   const [data,    setData]    = useState<PasajeroDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
@@ -174,6 +176,7 @@ export default function PasajeroDetailModal({
       setData(updated);
       setEditing(false);
       setForm(null);
+      router.refresh();
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : 'Error al guardar');
     } finally {
