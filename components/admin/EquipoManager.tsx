@@ -14,12 +14,37 @@ export interface TeamMemberRow {
   permissions:        Record<string, boolean>;
   active:             boolean;
   created_at:         string;
+  // Perfil personal
   phone:              string | null;
   emergency_name:     string | null;
   emergency_phone:    string | null;
   rut:                string | null;
   birthdate:          string | null;
+  address:            string | null;
+  civil_status:       string | null;
+  blood_type:         string | null;
+  allergies:          string | null;
   notes:              string | null;
+  // Habilitaciones
+  languages:          string[] | null;
+  license_class:      string | null;
+  // Vínculo laboral
+  employment_type:    string | null;
+  contract_type:      string | null;
+  contract_start:     string | null;
+  contract_end:       string | null;
+  afp:                string | null;
+  health_insurance_type: string | null;
+  health_insurance_name: string | null;
+  honorarios_payment_type: string | null;
+  // Financiero (solo si canViewFinancials)
+  salary_base:              number | null;
+  has_bonus:                boolean | null;
+  bonus_description:        string | null;
+  honorarios_rate_per_tour: number | null;
+  bank_name:                string | null;
+  bank_account_type:        string | null;
+  bank_account_number:      string | null;
 }
 
 interface MemberDocument {
@@ -41,14 +66,31 @@ const PERMISSIONS = [
   { key: 'view_reports',    label: 'Ver reportes',        desc: 'Reportes de operación' },
 ] as const;
 
-const DOC_TYPES = ['contrato','cedula','licencia','primeros_auxilios'] as const;
+const DOC_TYPES = [
+  'contrato','cedula','licencia','primeros_auxilios',
+  'certificado_antecedentes','psicotecnico','examen_medico','otro',
+] as const;
 
 const DOC_LABELS: Record<string, string> = {
-  contrato:           'Contrato de trabajo',
-  cedula:             'Cédula de identidad',
-  licencia:           'Licencia de conducir',
-  primeros_auxilios:  'Cert. primeros auxilios',
+  contrato:                  'Contrato de trabajo',
+  cedula:                    'Cédula de identidad',
+  licencia:                  'Licencia de conducir',
+  primeros_auxilios:         'Cert. primeros auxilios',
+  certificado_antecedentes:  'Cert. antecedentes',
+  psicotecnico:              'Examen psicotécnico',
+  examen_medico:             'Examen médico',
+  otro:                      'Otro',
 };
+
+const LANGUAGES_OPTIONS = ['Español','Inglés','Portugués','Francés','Alemán'];
+const LICENSE_OPTIONS   = ['A1','A2','B','C','D','E'];
+const CIVIL_STATUS_OPTIONS = [
+  { value: 'soltero',     label: 'Soltero/a' },
+  { value: 'casado',      label: 'Casado/a' },
+  { value: 'divorciado',  label: 'Divorciado/a' },
+  { value: 'viudo',       label: 'Viudo/a' },
+  { value: 'conviviente', label: 'Conviviente civil' },
+];
 
 const ROLE_COLOR: Record<string, string> = {
   admin:           'bg-purple-100 text-purple-700',
@@ -354,56 +396,127 @@ function DocumentsPanel({
 
 // ─── ProfilePanel ─────────────────────────────────────────────────────────────
 
+function PillSelect({
+  options, selected, onToggle,
+}: {
+  options:  string[];
+  selected: string[];
+  onToggle: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map(o => (
+        <button key={o} type="button" onClick={() => onToggle(o)}
+          className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+            selected.includes(o)
+              ? 'bg-teal text-white border-teal'
+              : 'border-gray-200 text-gray-500 hover:border-teal/40 hover:text-teal'
+          }`}>
+          {o}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ProfilePanel({
   member,
+  canViewFinancials,
   onUpdate,
 }: {
-  member:   TeamMemberRow;
-  onUpdate: (patch: Partial<TeamMemberRow>) => void;
+  member:             TeamMemberRow;
+  canViewFinancials:  boolean;
+  onUpdate:           (patch: Partial<TeamMemberRow>) => void;
 }) {
-  const [f, setF] = useState({
+  const init = () => ({
+    // Datos personales
     phone:           member.phone           ?? '',
     emergency_name:  member.emergency_name  ?? '',
     emergency_phone: member.emergency_phone ?? '',
     rut:             member.rut             ?? '',
     birthdate:       member.birthdate       ?? '',
+    address:         member.address         ?? '',
+    civil_status:    member.civil_status    ?? '',
+    blood_type:      member.blood_type      ?? '',
+    allergies:       member.allergies       ?? '',
     notes:           member.notes           ?? '',
+    // Habilitaciones
+    languages:       member.languages       ?? [],
+    license_class:   member.license_class   ?? '',
+    // Vínculo laboral
+    employment_type:    member.employment_type    ?? 'contrato',
+    contract_type:      member.contract_type      ?? '',
+    contract_start:     member.contract_start     ?? '',
+    contract_end:       member.contract_end       ?? '',
+    afp:                member.afp                ?? '',
+    health_insurance_type: member.health_insurance_type ?? '',
+    health_insurance_name: member.health_insurance_name ?? '',
+    honorarios_payment_type: member.honorarios_payment_type ?? '',
+    // Financiero
+    salary_base:              member.salary_base?.toString()              ?? '',
+    has_bonus:                member.has_bonus                            ?? false,
+    bonus_description:        member.bonus_description                    ?? '',
+    honorarios_rate_per_tour: member.honorarios_rate_per_tour?.toString() ?? '',
+    bank_name:                member.bank_name                            ?? '',
+    bank_account_type:        member.bank_account_type                   ?? '',
+    bank_account_number:      member.bank_account_number                 ?? '',
   });
+
+  const [f, setF]         = useState(init);
   const [saving, setSaving] = useState(false);
 
-  const original = {
-    phone:           member.phone           ?? '',
-    emergency_name:  member.emergency_name  ?? '',
-    emergency_phone: member.emergency_phone ?? '',
-    rut:             member.rut             ?? '',
-    birthdate:       member.birthdate       ?? '',
-    notes:           member.notes           ?? '',
-  };
+  useEffect(() => { setF(init()); }, [member.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isDirty = JSON.stringify(f) !== JSON.stringify(original);
+  function set<K extends keyof typeof f>(k: K, v: typeof f[K]) {
+    setF(p => ({ ...p, [k]: v }));
+  }
 
-  useEffect(() => {
-    setF({
-      phone:           member.phone           ?? '',
-      emergency_name:  member.emergency_name  ?? '',
-      emergency_phone: member.emergency_phone ?? '',
-      rut:             member.rut             ?? '',
-      birthdate:       member.birthdate       ?? '',
-      notes:           member.notes           ?? '',
-    });
-  }, [member.id]);
+  function toggleLang(lang: string) {
+    const next = f.languages.includes(lang)
+      ? f.languages.filter(l => l !== lang)
+      : [...f.languages, lang];
+    set('languages', next);
+  }
+
+  function toggleLicense(cls: string) {
+    set('license_class', f.license_class === cls ? '' : cls);
+  }
 
   async function save() {
     setSaving(true);
     try {
-      const patch = {
+      const patch: Partial<TeamMemberRow> = {
         phone:           f.phone.trim()           || null,
         emergency_name:  f.emergency_name.trim()  || null,
-        emergency_phone: f.emergency_phone.trim()  || null,
+        emergency_phone: f.emergency_phone.trim() || null,
         rut:             f.rut.trim()             || null,
         birthdate:       f.birthdate              || null,
+        address:         f.address.trim()         || null,
+        civil_status:    f.civil_status           || null,
+        blood_type:      f.blood_type.trim()      || null,
+        allergies:       f.allergies.trim()       || null,
         notes:           f.notes.trim()           || null,
+        languages:       f.languages.length ? f.languages : [],
+        license_class:   f.license_class          || null,
+        employment_type: f.employment_type        || 'contrato',
+        contract_type:   f.contract_type          || null,
+        contract_start:  f.contract_start         || null,
+        contract_end:    f.contract_end           || null,
+        afp:             f.afp.trim()             || null,
+        health_insurance_type: f.health_insurance_type || null,
+        health_insurance_name: f.health_insurance_name.trim() || null,
+        honorarios_payment_type: f.honorarios_payment_type || null,
       };
+      if (canViewFinancials) {
+        patch.salary_base              = f.salary_base ? parseInt(f.salary_base) : null;
+        patch.has_bonus                = f.has_bonus;
+        patch.bonus_description        = f.bonus_description.trim() || null;
+        patch.honorarios_rate_per_tour = f.honorarios_rate_per_tour
+          ? parseInt(f.honorarios_rate_per_tour) : null;
+        patch.bank_name                = f.bank_name.trim()          || null;
+        patch.bank_account_type        = f.bank_account_type         || null;
+        patch.bank_account_number      = f.bank_account_number.trim() || null;
+      }
       const res = await fetch(`/api/admin/team/${member.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
@@ -412,62 +525,266 @@ function ProfilePanel({
     } finally { setSaving(false); }
   }
 
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 p-5">
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Perfil</h3>
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500">Teléfono</label>
-          <input value={f.phone} onChange={e => setF(p => ({ ...p, phone: e.target.value }))}
-            placeholder="+56 9 1234 5678" className={ic} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">Contacto emergencia</label>
-            <input value={f.emergency_name}
-              onChange={e => setF(p => ({ ...p, emergency_name: e.target.value }))}
-              placeholder="Nombre" className={ic} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">Teléfono emergencia</label>
-            <input value={f.emergency_phone}
-              onChange={e => setF(p => ({ ...p, emergency_phone: e.target.value }))}
-              placeholder="+56 9 …" className={ic} />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">RUT</label>
-            <input value={f.rut} onChange={e => setF(p => ({ ...p, rut: e.target.value }))}
-              placeholder="12.345.678-9" className={ic} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-gray-500">Fecha de nacimiento</label>
-            <input type="date" value={f.birthdate}
-              onChange={e => setF(p => ({ ...p, birthdate: e.target.value }))}
-              className={ic} />
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500">Notas internas</label>
-          <textarea rows={2} value={f.notes}
-            onChange={e => setF(p => ({ ...p, notes: e.target.value }))}
-            placeholder="Observaciones, horarios especiales…"
-            className={ic + ' resize-none'} />
-        </div>
+  const isHonorarios = f.employment_type === 'honorarios';
 
-        {isDirty && (
-          <button type="button" onClick={save} disabled={saving}
-            className="self-start bg-teal text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-teal/90 disabled:opacity-50 transition-colors">
-            {saving ? 'Guardando…' : 'Guardar cambios'}
-          </button>
-        )}
-      </div>
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-5 flex flex-col gap-5">
+
+      {/* ── Datos personales ── */}
+      <section>
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Datos personales</h4>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Teléfono</label>
+            <input value={f.phone} onChange={e => set('phone', e.target.value)}
+              placeholder="+56 9 1234 5678" className={ic} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Contacto emergencia</label>
+              <input value={f.emergency_name}
+                onChange={e => set('emergency_name', e.target.value)}
+                placeholder="Nombre" className={ic} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Teléfono emergencia</label>
+              <input value={f.emergency_phone}
+                onChange={e => set('emergency_phone', e.target.value)}
+                placeholder="+56 9 …" className={ic} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">RUT</label>
+              <input value={f.rut} onChange={e => set('rut', e.target.value)}
+                placeholder="12.345.678-9" className={ic} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Fecha de nacimiento</label>
+              <input type="date" value={f.birthdate}
+                onChange={e => set('birthdate', e.target.value)}
+                className={ic} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Dirección</label>
+            <input value={f.address} onChange={e => set('address', e.target.value)}
+              placeholder="Calle, número, ciudad" className={ic} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Estado civil</label>
+              <select value={f.civil_status} onChange={e => set('civil_status', e.target.value)}
+                className={ic}>
+                <option value="">—</option>
+                {CIVIL_STATUS_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Grupo sanguíneo</label>
+              <input value={f.blood_type} onChange={e => set('blood_type', e.target.value)}
+                placeholder="A+, O−…" className={ic} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Alergias / restricciones</label>
+            <input value={f.allergies} onChange={e => set('allergies', e.target.value)}
+              placeholder="Gluten, nueces…" className={ic} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Notas internas</label>
+            <textarea rows={2} value={f.notes}
+              onChange={e => set('notes', e.target.value)}
+              placeholder="Observaciones, horarios especiales…"
+              className={ic + ' resize-none'} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Habilitaciones ── */}
+      <section>
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Habilitaciones</h4>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-gray-500">Idiomas</label>
+            <PillSelect options={LANGUAGES_OPTIONS} selected={f.languages} onToggle={toggleLang} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-gray-500">Clase de licencia</label>
+            <PillSelect options={LICENSE_OPTIONS} selected={f.license_class ? [f.license_class] : []} onToggle={toggleLicense} />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Vínculo laboral ── */}
+      <section>
+        <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Vínculo laboral</h4>
+        <div className="flex flex-col gap-3">
+          {/* Toggle contrato / honorarios */}
+          <div className="flex gap-2">
+            {(['contrato','honorarios'] as const).map(t => (
+              <button key={t} type="button"
+                onClick={() => set('employment_type', t)}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                  f.employment_type === t
+                    ? 'bg-teal text-white border-teal'
+                    : 'border-gray-200 text-gray-500 hover:border-teal/40'
+                }`}>
+                {t === 'contrato' ? 'Contrato' : 'Honorarios'}
+              </button>
+            ))}
+          </div>
+
+          {!isHonorarios && (
+            <>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">Tipo de contrato</label>
+                <select value={f.contract_type} onChange={e => set('contract_type', e.target.value)}
+                  className={ic}>
+                  <option value="">—</option>
+                  <option value="indefinido">Indefinido</option>
+                  <option value="plazo_fijo">Plazo fijo</option>
+                  <option value="por_obra">Por obra o faena</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">Inicio contrato</label>
+                  <input type="date" value={f.contract_start}
+                    onChange={e => set('contract_start', e.target.value)} className={ic} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">Fin contrato</label>
+                  <input type="date" value={f.contract_end}
+                    onChange={e => set('contract_end', e.target.value)} className={ic} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">AFP</label>
+                  <input value={f.afp} onChange={e => set('afp', e.target.value)}
+                    placeholder="Habitat, Provida…" className={ic} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">Previsión de salud</label>
+                  <select value={f.health_insurance_type}
+                    onChange={e => set('health_insurance_type', e.target.value)}
+                    className={ic}>
+                    <option value="">—</option>
+                    <option value="fonasa">FONASA</option>
+                    <option value="isapre">ISAPRE</option>
+                  </select>
+                </div>
+              </div>
+              {f.health_insurance_type === 'isapre' && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">Nombre ISAPRE</label>
+                  <input value={f.health_insurance_name}
+                    onChange={e => set('health_insurance_name', e.target.value)}
+                    placeholder="Cruz Blanca, Consalud…" className={ic} />
+                </div>
+              )}
+            </>
+          )}
+
+          {isHonorarios && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Modalidad de pago</label>
+              <select value={f.honorarios_payment_type}
+                onChange={e => set('honorarios_payment_type', e.target.value)}
+                className={ic}>
+                <option value="">—</option>
+                <option value="per_tour">Por tour realizado</option>
+                <option value="per_service">Por servicio prestado</option>
+                <option value="both">Ambos</option>
+              </select>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Financiero (solo view_financials) ── */}
+      {canViewFinancials && (
+        <section>
+          <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+            Financiero <span className="text-gray-300 font-normal normal-case">· privado</span>
+          </h4>
+          <div className="flex flex-col gap-3">
+            {!isHonorarios && (
+              <>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-gray-500">Sueldo base (CLP)</label>
+                  <input type="number" value={f.salary_base}
+                    onChange={e => set('salary_base', e.target.value)}
+                    placeholder="600000" className={ic} />
+                </div>
+                <label className="flex items-center gap-2.5 text-sm text-gray-700 cursor-pointer select-none">
+                  <input type="checkbox" checked={f.has_bonus}
+                    onChange={e => set('has_bonus', e.target.checked)}
+                    className="accent-teal" />
+                  Incluye bono
+                </label>
+                {f.has_bonus && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500">Descripción del bono</label>
+                    <input value={f.bonus_description}
+                      onChange={e => set('bonus_description', e.target.value)}
+                      placeholder="Bono de productividad mensual…" className={ic} />
+                  </div>
+                )}
+              </>
+            )}
+
+            {isHonorarios && (f.honorarios_payment_type === 'per_tour' || f.honorarios_payment_type === 'both') && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">Pago por tour (CLP)</label>
+                <input type="number" value={f.honorarios_rate_per_tour}
+                  onChange={e => set('honorarios_rate_per_tour', e.target.value)}
+                  placeholder="35000" className={ic} />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">Banco</label>
+                <input value={f.bank_name} onChange={e => set('bank_name', e.target.value)}
+                  placeholder="Banco Estado, Santander…" className={ic} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500">Tipo de cuenta</label>
+                <select value={f.bank_account_type}
+                  onChange={e => set('bank_account_type', e.target.value)}
+                  className={ic}>
+                  <option value="">—</option>
+                  <option value="corriente">Corriente</option>
+                  <option value="vista">Vista</option>
+                  <option value="ahorro">Ahorro</option>
+                  <option value="rut">Cuenta RUT</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">N° de cuenta</label>
+              <input value={f.bank_account_number}
+                onChange={e => set('bank_account_number', e.target.value)}
+                placeholder="000-0-000000-0" className={ic} />
+            </div>
+          </div>
+        </section>
+      )}
+
+      <button type="button" onClick={save} disabled={saving}
+        className="self-start bg-teal text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-teal/90 disabled:opacity-50 transition-colors">
+        {saving ? 'Guardando…' : 'Guardar cambios'}
+      </button>
     </div>
   );
 }
 
 // ─── Tab: Permisos ────────────────────────────────────────────────────────────
+// (canViewFinancials flows down: EquipoManager → MemberDetail → ProfilePanel)
 
 function PermissionsTab({
   member,
@@ -600,13 +917,15 @@ type TabKey = 'permisos' | 'tours';
 function MemberDetail({
   member,
   isCurrentUser,
+  canViewFinancials,
   onUpdate,
   onDelete,
 }: {
-  member:       TeamMemberRow;
-  isCurrentUser:boolean;
-  onUpdate:     (patch: Partial<TeamMemberRow>) => void;
-  onDelete:     () => void;
+  member:             TeamMemberRow;
+  isCurrentUser:      boolean;
+  canViewFinancials:  boolean;
+  onUpdate:           (patch: Partial<TeamMemberRow>) => void;
+  onDelete:           () => void;
 }) {
   const [docs,    setDocs]    = useState<MemberDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -657,7 +976,7 @@ function MemberDetail({
         <>
           {/* Panels: Perfil + Documentos */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <ProfilePanel member={member} onUpdate={onUpdate} />
+            <ProfilePanel member={member} canViewFinancials={canViewFinancials} onUpdate={onUpdate} />
             <DocumentsPanel memberId={member.id} docs={docs} onUpdate={setDocs} />
           </div>
 
@@ -754,7 +1073,16 @@ function InviteMemberModal({
         active: true,
         created_at: new Date().toISOString(),
         phone: null, emergency_name: null, emergency_phone: null,
-        rut: null, birthdate: null, notes: null,
+        rut: null, birthdate: null, address: null, civil_status: null,
+        blood_type: null, allergies: null, notes: null,
+        languages: [], license_class: null,
+        employment_type: 'contrato', contract_type: null,
+        contract_start: null, contract_end: null, afp: null,
+        health_insurance_type: null, health_insurance_name: null,
+        honorarios_payment_type: null,
+        salary_base: null, has_bonus: null, bonus_description: null,
+        honorarios_rate_per_tour: null,
+        bank_name: null, bank_account_type: null, bank_account_number: null,
       });
       onClose();
     } finally { setSaving(false); }
@@ -816,9 +1144,11 @@ function InviteMemberModal({
 export default function EquipoManager({
   initialMembers,
   currentUserEmail,
+  canViewFinancials,
 }: {
-  initialMembers:   TeamMemberRow[];
-  currentUserEmail: string;
+  initialMembers:    TeamMemberRow[];
+  currentUserEmail:  string;
+  canViewFinancials: boolean;
 }) {
   const [members,    setMembers]    = useState<TeamMemberRow[]>(initialMembers);
   const [selectedId, setSelectedId] = useState<string | null>(initialMembers[0]?.id ?? null);
@@ -906,6 +1236,7 @@ export default function EquipoManager({
           key={selectedMember.id}
           member={selectedMember}
           isCurrentUser={selectedMember.email === currentUserEmail}
+          canViewFinancials={canViewFinancials}
           onUpdate={handleUpdate}
           onDelete={handleDelete}
         />

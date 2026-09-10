@@ -3,7 +3,10 @@ import { z } from 'zod';
 import { getCurrentTeamMember, hasPermission } from '@/lib/admin-auth';
 import { supabase } from '@/lib/supabase';
 
-const DOC_TYPES = ['contrato','cedula','licencia','primeros_auxilios','otro'] as const;
+const DOC_TYPES = [
+  'contrato','cedula','licencia','primeros_auxilios',
+  'certificado_antecedentes','psicotecnico','examen_medico','otro',
+] as const;
 
 const DocSchema = z.object({
   type:      z.enum(DOC_TYPES),
