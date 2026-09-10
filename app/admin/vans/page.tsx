@@ -26,7 +26,7 @@ export default async function VansPage() {
   return (
     <div className="flex min-h-screen">
       <AdminSidebar userEmail={user.email ?? ''} />
-      <main className="flex-1 ml-56 p-6 max-w-4xl">
+      <main className="flex-1 ml-56 p-6 max-w-5xl">
         <div className="mb-6">
           <h1 className="text-xl font-semibold text-gray-900">Vans</h1>
           <p className="text-sm text-gray-500 mt-0.5">
