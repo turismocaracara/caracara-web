@@ -1,0 +1,6 @@
+ALTER TABLE vans
+  ADD COLUMN IF NOT EXISTS brand text,
+  ADD COLUMN IF NOT EXISTS model text,
+  ADD COLUMN IF NOT EXISTS year  int,
+  ADD COLUMN IF NOT EXISTS color text,
+  ADD COLUMN IF NOT EXISTS notes text;

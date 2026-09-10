@@ -12,7 +12,7 @@ export default async function VansPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   const [vansRes, blocksRes] = await Promise.all([
-    supabase.from('vans').select('id, name, capacity, plate, active').order('name'),
+    supabase.from('vans').select('id, name, brand, model, year, capacity, plate, color, notes, active').order('name'),
     supabase
       .from('van_blocks')
       .select('id, van_id, date, reason')
