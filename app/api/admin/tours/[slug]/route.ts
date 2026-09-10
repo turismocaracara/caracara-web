@@ -18,7 +18,9 @@ const TourUpdateSchema = z.object({
   description_es:  z.string().max(3000).nullable().optional(),
   description_en:  z.string().max(3000).nullable().optional(),
   description_pt:  z.string().max(3000).nullable().optional(),
-  category:        z.enum(['cajon', 'valparaiso', 'santiago', 'vinedos', 'trekking', 'aventura']).optional(),
+  category:        z.string().max(100).optional(),
+  categories:      z.array(z.string().max(100)).max(10).optional(),
+  sector:          z.array(z.string().max(100)).max(5).optional(),
   difficulty:      z.enum(['low', 'medium', 'high']).nullable().optional(),
   hide_difficulty: z.boolean().optional(),
   duration_hrs:    z.number().int().min(1).max(24).nullable().optional(),
@@ -43,7 +45,8 @@ export async function GET(
     .select(`
       slug, name_es, name_en, name_pt,
       description_es, description_en, description_pt,
-      category, difficulty, hide_difficulty,
+      category, categories, sector,
+      difficulty, hide_difficulty,
       duration_hrs, highlights, includes_keys, excludes_keys,
       itinerary, images, active
     `)

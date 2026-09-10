@@ -18,6 +18,8 @@ export interface TourDetail {
   description_en:  string | null;
   description_pt:  string | null;
   category:        string | null;
+  categories:      string[] | null;
+  sector:          string[] | null;
   difficulty:      string | null;
   hide_difficulty: boolean | null;
   duration_hrs:    number | null;
@@ -128,13 +130,17 @@ const EXCLUDE_OPTIONS: KeyOption[] = [
   { key: 'personal_insurance', label: 'Seguro personal de viaje' },
 ];
 
-const CATEGORIES = [
+const CATEGORY_OPTIONS = [
+  { value: 'panoramico', label: 'Panorámico' },
+  { value: 'trekking',   label: 'Trekking'   },
+  { value: 'aventura',   label: 'Aventura'   },
+  { value: 'vinedo',     label: 'Viñedo'     },
+];
+
+const SECTOR_OPTIONS = [
+  { value: 'valparaiso', label: 'Valparaíso'      },
+  { value: 'santiago',   label: 'Santiago'        },
   { value: 'cajon',      label: 'Cajón del Maipo' },
-  { value: 'valparaiso', label: 'Valparaíso' },
-  { value: 'santiago',   label: 'Santiago' },
-  { value: 'vinedos',    label: 'Viñedos' },
-  { value: 'trekking',   label: 'Trekking' },
-  { value: 'aventura',   label: 'Aventura' },
 ];
 
 const DIFFICULTIES = [
@@ -386,6 +392,82 @@ function HighlightAutocomplete({
   );
 }
 
+// Multi-select pill buttons with optional custom tag input
+function PillMultiSelect({
+  options,
+  value,
+  onChange,
+  placeholder = 'Agregar…',
+}: {
+  options:     { value: string; label: string }[];
+  value:       string[];
+  onChange:    (v: string[]) => void;
+  placeholder?: string;
+}) {
+  const [customInput, setCustomInput] = useState('');
+  const fixedValues = options.map(o => o.value);
+  const customTags  = value.filter(v => !fixedValues.includes(v));
+
+  function toggle(v: string) {
+    if (value.includes(v)) onChange(value.filter(x => x !== v));
+    else onChange([...value, v]);
+  }
+
+  function addCustom() {
+    const tag = customInput.trim();
+    if (tag && !value.includes(tag)) onChange([...value, tag]);
+    setCustomInput('');
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2 items-center">
+      {options.map(o => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => toggle(o.value)}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-all ${
+            value.includes(o.value)
+              ? 'border-teal bg-teal/10 text-teal'
+              : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+      {customTags.map(tag => (
+        <span
+          key={tag}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#D4511A]/10 text-[#D4511A] border-2 border-[#D4511A]/40"
+        >
+          {tag}
+          <button
+            type="button"
+            onClick={() => onChange(value.filter(v => v !== tag))}
+            className="ml-0.5 hover:text-red-500 leading-none"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <div className="flex items-center gap-1.5">
+        <input
+          value={customInput}
+          onChange={e => setCustomInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom(); } }}
+          placeholder={placeholder}
+          className="text-xs border border-dashed border-gray-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-teal w-32"
+        />
+        {customInput.trim() && (
+          <button type="button" onClick={addCustom} className="text-xs text-teal font-semibold">
+            +
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Custom items input for includes/excludes
 function CustomItemInput({
   list,
@@ -461,7 +543,8 @@ export default function TourEditForm({
   const [descEs, setDescEs] = useState(tour?.description_es ?? '');
   const [descEn, setDescEn] = useState(tour?.description_en ?? '');
   const [descPt, setDescPt] = useState(tour?.description_pt ?? '');
-  const [category, setCategory]     = useState(tour?.category ?? 'cajon');
+  const [categories, setCategories] = useState<string[]>(tour?.categories ?? []);
+  const [sector,     setSector]     = useState<string[]>(tour?.sector     ?? []);
   const [difficulty, setDifficulty] = useState(tour?.difficulty ?? 'low');
   const [hideDifficulty, setHideDifficulty] = useState(!!tour?.hide_difficulty);
   const [durationHrs, setDurationHrs] = useState(tour?.duration_hrs ?? 8);
@@ -504,7 +587,8 @@ export default function TourEditForm({
       const payload = {
         name_es: nameEs, name_en: nameEn || null, name_pt: namePt || null,
         description_es: descEs || null, description_en: descEn || null, description_pt: descPt || null,
-        category, difficulty, hide_difficulty: hideDifficulty,
+        categories, sector,
+        difficulty, hide_difficulty: hideDifficulty,
         duration_hrs: durationHrs,
         highlights, includes_keys: includesKeys, excludes_keys: excludesKeys,
         itinerary: itinerary.filter(s => s.time || s.place),
@@ -517,7 +601,7 @@ export default function TourEditForm({
         const res = await fetch('/api/admin/tours', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ name_es: nameEs, name_en: nameEn || null, name_pt: namePt || null, category }),
+          body:    JSON.stringify({ name_es: nameEs, name_en: nameEn || null, name_pt: namePt || null }),
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({})) as { error?: string };
@@ -586,12 +670,23 @@ export default function TourEditForm({
 
       {/* 2. Clasificación */}
       <Section title="Clasificación">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Field label="Categoría">
-            <select value={category} onChange={e => setCategory(e.target.value)} className={selectClass}>
-              {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </Field>
+        <Field label="Categoría">
+          <PillMultiSelect
+            options={CATEGORY_OPTIONS}
+            value={categories}
+            onChange={setCategories}
+            placeholder="Otra categoría…"
+          />
+        </Field>
+        <Field label="Sector">
+          <PillMultiSelect
+            options={SECTOR_OPTIONS}
+            value={sector}
+            onChange={setSector}
+            placeholder="Otro sector…"
+          />
+        </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Duración (horas)">
             <input
               type="number" min={1} max={24}
