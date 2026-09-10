@@ -88,7 +88,7 @@ export default function AsignacionesManager({
   function toggleExpanded(instanceId: string) {
     setExpanded(prev => {
       const next = new Set(prev);
-      next.has(instanceId) ? next.delete(instanceId) : next.add(instanceId);
+      if (next.has(instanceId)) { next.delete(instanceId); } else { next.add(instanceId); }
       return next;
     });
   }

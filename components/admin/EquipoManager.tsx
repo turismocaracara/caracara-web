@@ -1379,7 +1379,7 @@ function PagosTab({ member }: { member: TeamMemberRow }) {
 
         {items.length === 0 ? (
           <p className="text-sm text-gray-400 py-3 text-center bg-gray-50 rounded-xl">
-            Sin ítems manuales. Usa "+ Agregar" para bonos, servicios o sueldos.
+            Sin ítems manuales. Usa &quot;+ Agregar&quot; para bonos, servicios o sueldos.
           </p>
         ) : (
           <div className="flex flex-col gap-1.5">
