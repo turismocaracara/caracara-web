@@ -172,32 +172,41 @@ export default async function TourDetailPage(
         <div className="max-w-6xl mx-auto px-4 py-6">
           {tour.images && tour.images.length > 0 ? (
             <div className="grid grid-cols-3 gap-2 h-52 sm:h-72 rounded-2xl overflow-hidden">
-              {/* Main image */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={tour.images[0]}
-                alt={tourName}
-                className="col-span-2 w-full h-full object-cover rounded-l-2xl"
-              />
+              {/* Main image — fondo difuminado + imagen completa sin recorte */}
+              <div className="col-span-2 relative overflow-hidden rounded-l-2xl bg-gray-900">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={tour.images[0]}
+                  alt=""
+                  aria-hidden
+                  className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-60"
+                />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={tour.images[0]}
+                  alt={tourName}
+                  className="relative w-full h-full object-contain"
+                />
+              </div>
               {/* Up to 2 thumbnails */}
               <div className="flex flex-col gap-2">
                 {tour.images[1] ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={tour.images[1]}
-                    alt=""
-                    className="flex-1 w-full object-cover rounded-tr-2xl"
-                  />
+                  <div className="flex-1 relative overflow-hidden rounded-tr-2xl bg-gray-900">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={tour.images[1]} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-60" />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={tour.images[1]} alt="" className="relative w-full h-full object-contain" />
+                  </div>
                 ) : (
                   <div className="flex-1 bg-gradient-to-br from-orange/10 to-orange/5 rounded-tr-2xl" />
                 )}
                 {tour.images[2] ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={tour.images[2]}
-                    alt=""
-                    className="flex-1 w-full object-cover rounded-br-2xl"
-                  />
+                  <div className="flex-1 relative overflow-hidden rounded-br-2xl bg-gray-900">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={tour.images[2]} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-60" />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={tour.images[2]} alt="" className="relative w-full h-full object-contain" />
+                  </div>
                 ) : (
                   <div className="flex-1 bg-gradient-to-br from-teal/15 to-teal/5 rounded-br-2xl" />
                 )}
